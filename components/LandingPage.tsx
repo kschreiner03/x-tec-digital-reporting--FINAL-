@@ -42,6 +42,23 @@ interface LandingPageProps {
 
 const RECENT_PROJECTS_KEY = 'xtec_recent_projects';
 const MAX_RECENT_PROJECTS = 10;
+const DISPLAY_SCALE_KEY = 'xtec_display_scale';
+
+function getAutoScale(): number {
+    const h = window.innerHeight;
+    if (h < 720) return 0.65;
+    if (h < 820) return 0.72;
+    if (h < 920) return 0.78;
+    if (h < 980) return 0.84;
+    if (h < 1050) return 0.90;
+    return 1.0;
+}
+
+function getEffectiveScale(stored: string | null): number {
+    if (!stored || stored === 'auto') return getAutoScale();
+    const n = parseFloat(stored);
+    return isNaN(n) ? getAutoScale() : n;
+}
 
 
 const VALID_APP_TYPES = new Set<string>(['photoLog', 'dfrSaskpower', 'dfrStandard', 'combinedLog']);
@@ -112,17 +129,22 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectApp, onOpenProject, s
 
     const [presetBgUrl, setPresetBgUrl] = useState<string | null>(null);
     const bgPosition = 'center 85%';
-    const [recentCollapsed, setRecentCollapsed] = useState(
-        () => localStorage.getItem('recentCollapsed') === 'true'
-    );
+    const [recentCollapsed, setRecentCollapsed] = useState(true);
     const menuRef = useRef<HTMLDivElement>(null);
     const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
     const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
+    const [displayScale, setDisplayScale] = useState<number>(() => getEffectiveScale(localStorage.getItem(DISPLAY_SCALE_KEY)));
 
     useEffect(() => {
         const observer = new MutationObserver(() => setIsDark(document.documentElement.classList.contains('dark')));
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
         return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        const handler = () => setDisplayScale(getEffectiveScale(localStorage.getItem(DISPLAY_SCALE_KEY)));
+        window.addEventListener('xtec-display-scale-changed', handler);
+        return () => window.removeEventListener('xtec-display-scale-changed', handler);
     }, []);
 
     useEffect(() => {
@@ -305,7 +327,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectApp, onOpenProject, s
             <PhotoCredit fileName={localStorage.getItem('xtec_landing_photo_preset')} />
             {/* Invisible anchor for the menu bar */}
             <div className="h-0 w-full absolute top-0 left-0 z-0" />
-            <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 relative z-10 flex-1 min-h-0 flex flex-col py-8 sm:py-10 lg:py-14 justify-end overflow-y-auto">
+            <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 relative z-10 flex-1 min-h-0 flex flex-col py-8 sm:py-10 lg:py-14 justify-end overflow-y-auto" style={{ zoom: displayScale }}>
                 <div
                     className="rounded-3xl p-5 sm:p-6 md:p-8 lg:p-10 flex flex-col backdrop-blur-xl dark:backdrop-blur-none"
                     style={isDark ? {

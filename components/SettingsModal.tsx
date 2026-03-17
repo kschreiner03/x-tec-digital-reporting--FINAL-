@@ -72,6 +72,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const [username, setUsername] = useState('User');
     const profileInputRef = useRef<HTMLInputElement>(null);
     const { theme, setTheme } = useTheme();
+    const [displayScaleSetting, setDisplayScaleSetting] = useState<string>(() => localStorage.getItem('xtec_display_scale') || 'auto');
+
+    const handleDisplayScaleChange = (value: string) => {
+        setDisplayScaleSetting(value);
+        localStorage.setItem('xtec_display_scale', value);
+        window.dispatchEvent(new CustomEvent('xtec-display-scale-changed'));
+    };
 
     const hasActivePhoto = !!selectedPreset;
 
@@ -292,6 +299,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             >
                                 General
                             </button>
+                            <button
+                                onClick={() => setActiveTab('display')}
+                                className={`w-full text-left px-4 py-2 rounded-md font-medium transition-colors ${activeTab === 'display' ? 'bg-[#007D8C] text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'}`}
+                            >
+                                Display
+                            </button>
                              <button
                                 onClick={() => setActiveTab('data')}
                                 className={`w-full text-left px-4 py-2 rounded-md font-medium transition-colors ${activeTab === 'data' ? 'bg-[#007D8C] text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'}`}
@@ -349,82 +362,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                             />
                                         </div>
                                     </div>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4 border-b dark:border-gray-700 pb-2">Appearance</h3>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <span className="block text-base font-medium text-gray-700 dark:text-gray-300">Theme</span>
-                                            <span className="text-sm text-gray-500 dark:text-gray-400">Choose your preferred appearance.</span>
-                                        </div>
-                                        <select
-                                            value={theme}
-                                            onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}
-                                            className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#007D8C]"
-                                        >
-                                            <option value="light">Light</option>
-                                            <option value="dark">Dark</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4 border-b dark:border-gray-700 pb-2">Landing Page Background</h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                                        Choose a preset wallpaper for the landing page background.
-                                    </p>
-
-                                    {/* Preset wallpaper grid */}
-                                    <div className="grid grid-cols-5 gap-2 mb-3">
-                                        {PRESET_WALLPAPERS.map((preset) => {
-                                            const isSelected = selectedPreset === preset.fileName;
-                                            return (
-                                                <button
-                                                    key={preset.fileName}
-                                                    onClick={() => handleSelectPreset(preset)}
-                                                    className={`relative rounded-lg overflow-hidden border-2 transition-[border-color,box-shadow] duration-150 group focus:outline-none ${
-                                                        isSelected
-                                                            ? 'border-[#007D8C] ring-1 ring-[#007D8C]/30'
-                                                            : 'border-gray-200 dark:border-gray-600 hover:border-[#007D8C]/40'
-                                                    }`}
-                                                    style={{ aspectRatio: '16/9' }}
-                                                    title={preset.label}
-                                                >
-                                                    {wallpaperUrls[preset.fileName] && (
-                                                        <img
-                                                            src={wallpaperUrls[preset.fileName]}
-                                                            alt={preset.label}
-                                                            className="w-full h-full object-cover"
-                                                            draggable={false}
-                                                        />
-                                                    )}
-                                                    <div className={`absolute inset-0 flex items-end justify-center pb-1 bg-gradient-to-t from-black/50 to-transparent ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                                                        <span className="text-[10px] font-medium text-white drop-shadow-sm">{preset.label}</span>
-                                                    </div>
-                                                    {isSelected && (
-                                                        <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#007D8C] flex items-center justify-center">
-                                                            <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                                            </svg>
-                                                        </div>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {hasActivePhoto && (
-                                        <button
-                                            onClick={() => {
-                                                handleRemoveLandingPhoto();
-                                                window.dispatchEvent(new CustomEvent('xtec-bg-photo-changed'));
-                                            }}
-                                            className="text-sm text-red-500 hover:text-red-600 font-medium transition-colors"
-                                        >
-                                            Reset to Default
-                                        </button>
-                                    )}
                                 </div>
 
                                 <div>
@@ -517,6 +454,118 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Used in DFRs.</p>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'display' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4 border-b dark:border-gray-700 pb-2">Theme</h3>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <span className="block text-base font-medium text-gray-700 dark:text-gray-300">Appearance</span>
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">Choose your preferred appearance.</span>
+                                        </div>
+                                        <select
+                                            value={theme}
+                                            onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}
+                                            className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#007D8C]"
+                                        >
+                                            <option value="light">Light</option>
+                                            <option value="dark">Dark</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4 border-b dark:border-gray-700 pb-2">Screen Size</h3>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div>
+                                            <span className="block text-base font-medium text-gray-700 dark:text-gray-300">UI Scale</span>
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">Scale the landing page to fit your screen without content overflowing.</span>
+                                        </div>
+                                        <select
+                                            value={displayScaleSetting}
+                                            onChange={(e) => handleDisplayScaleChange(e.target.value)}
+                                            className="w-56 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#007D8C]"
+                                        >
+                                            <option value="auto">Auto — Fit to Screen</option>
+                                            <optgroup label="Laptop">
+                                                <option value="0.60">11" Laptop (1280×720)</option>
+                                                <option value="0.65">11"–12" Laptop (1366×768)</option>
+                                                <option value="0.72">13" Laptop (1280×800)</option>
+                                                <option value="0.78">13" Laptop / MacBook (1440×900)</option>
+                                                <option value="0.84">14" Laptop (1600×900)</option>
+                                                <option value="0.90">15" Laptop (1920×1080)</option>
+                                                <option value="0.95">15" High-DPI Laptop</option>
+                                            </optgroup>
+                                            <optgroup label="Desktop Monitor">
+                                                <option value="1.00">Desktop HD (1920×1080)</option>
+                                                <option value="1.05">Desktop FHD+ (2048×1152)</option>
+                                                <option value="1.08">Large Monitor (2560×1440)</option>
+                                                <option value="1.12">Ultra-Wide / 4K (3840×2160)</option>
+                                            </optgroup>
+                                        </select>
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        Auto detects your screen height automatically. Choose a manual size if Auto doesn't look right.
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4 border-b dark:border-gray-700 pb-2">Landing Page Background</h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                                        Choose a preset wallpaper for the landing page background.
+                                    </p>
+                                    <div className="grid grid-cols-5 gap-2 mb-3">
+                                        {PRESET_WALLPAPERS.map((preset) => {
+                                            const isSelected = selectedPreset === preset.fileName;
+                                            return (
+                                                <button
+                                                    key={preset.fileName}
+                                                    onClick={() => handleSelectPreset(preset)}
+                                                    className={`relative rounded-lg overflow-hidden border-2 transition-[border-color,box-shadow] duration-150 group focus:outline-none ${
+                                                        isSelected
+                                                            ? 'border-[#007D8C] ring-1 ring-[#007D8C]/30'
+                                                            : 'border-gray-200 dark:border-gray-600 hover:border-[#007D8C]/40'
+                                                    }`}
+                                                    style={{ aspectRatio: '16/9' }}
+                                                    title={preset.label}
+                                                >
+                                                    {wallpaperUrls[preset.fileName] && (
+                                                        <img
+                                                            src={wallpaperUrls[preset.fileName]}
+                                                            alt={preset.label}
+                                                            className="w-full h-full object-cover"
+                                                            draggable={false}
+                                                        />
+                                                    )}
+                                                    <div className={`absolute inset-0 flex items-end justify-center pb-1 bg-gradient-to-t from-black/50 to-transparent ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                                                        <span className="text-[10px] font-medium text-white drop-shadow-sm">{preset.label}</span>
+                                                    </div>
+                                                    {isSelected && (
+                                                        <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#007D8C] flex items-center justify-center">
+                                                            <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                                            </svg>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {hasActivePhoto && (
+                                        <button
+                                            onClick={() => {
+                                                handleRemoveLandingPhoto();
+                                                window.dispatchEvent(new CustomEvent('xtec-bg-photo-changed'));
+                                            }}
+                                            className="text-sm text-red-500 hover:text-red-600 font-medium transition-colors"
+                                        >
+                                            Reset to Default
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}
