@@ -45,13 +45,16 @@ const MAX_RECENT_PROJECTS = 10;
 const DISPLAY_SCALE_KEY = 'xtec_display_scale';
 
 function getAutoScale(): number {
-    const h = window.innerHeight;
-    if (h < 720) return 0.65;
-    if (h < 820) return 0.72;
-    if (h < 920) return 0.78;
-    if (h < 980) return 0.84;
-    if (h < 1050) return 0.90;
-    return 1.0;
+    // Use physical screen resolution for detection — more reliable than viewport height
+    const h = window.screen.height * window.devicePixelRatio;
+    if (h < 800)  return 0.60;
+    if (h < 900)  return 0.65;
+    if (h < 1000) return 0.72;
+    if (h < 1080) return 0.78;
+    if (h < 1200) return 0.84;
+    if (h < 1440) return 0.90;
+    if (h < 2160) return 1.00;
+    return 1.08; // 4K+
 }
 
 function getEffectiveScale(stored: string | null): number {
