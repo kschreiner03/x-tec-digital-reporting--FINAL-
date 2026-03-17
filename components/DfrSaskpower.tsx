@@ -1,12 +1,13 @@
 import React, { useState, ReactElement, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { DfrSaskpowerData, ChecklistOption, PhotoData, LocationActivity, ActivityBlock, TextHighlight, TextComment } from '../types';
-import { DownloadIcon, SaveIcon, FolderOpenIcon, ArrowLeftIcon, PlusIcon, TrashIcon, CloseIcon, FolderArrowDownIcon, ChatBubbleLeftIcon, ZoomInIcon, ZoomOutIcon } from './icons';
+import { DownloadIcon, SaveIcon, FolderOpenIcon, ArrowLeftIcon, PlusIcon, TrashIcon, CloseIcon, FolderArrowDownIcon, ChatBubbleLeftIcon, ZoomInIcon, ZoomOutIcon, ChevronDownIcon } from './icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { AppType } from '../App';
 import PhotoEntry from './PhotoEntry';
 import { storeImage, retrieveImage, deleteImage, storeProject, deleteProject, deleteThumbnail, storeThumbnail, retrieveProject } from './db';
 import { generateProjectThumbnail } from './thumbnailUtils';
+import { safeSet } from './safeStorage';
 import { SpecialCharacterPalette } from './SpecialCharacterPalette';
 import BulletPointEditor from './BulletPointEditor';
 import ImageModal from './ImageModal';
@@ -16,6 +17,8 @@ import { CommentAnchorPosition } from './BulletPointEditor';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
 import SafeImage, { getAssetUrl } from './SafeImage';
+import { toast } from './Toast';
+import { perfMark, perfMeasure } from './perf';
 
 // --- Recent Projects Utility ---
 const RECENT_PROJECTS_KEY = 'xtec_recent_projects';
@@ -128,11 +131,7 @@ const addRecentProject = async (
         }
     }
 
-    try {
-        localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(updatedProjects));
-    } catch (e) {
-        console.error('Failed to save recent projects to localStorage:', e);
-    }
+    safeSet(RECENT_PROJECTS_KEY, JSON.stringify(updatedProjects));
 };
 
 // --------------------
@@ -285,8 +284,8 @@ const PdfPreviewModal: React.FC<{ url: string; filename: string; onClose: () => 
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-[100] p-4" role="dialog" aria-modal="true">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-full flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center z-[100] p-4" role="dialog" aria-modal="true">
+            <div className="xtec-modal-enter bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-full flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center p-4 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
                     <h3 className="text-xl font-bold text-gray-800 dark:text-white">PDF Preview</h3>
                     <div className="flex items-center gap-4">
@@ -300,16 +299,7 @@ const PdfPreviewModal: React.FC<{ url: string; filename: string; onClose: () => 
                     </div>
                 </div>
                 <div className="flex-grow bg-gray-200 dark:bg-gray-900 relative">
-                    <object data={url} type="application/pdf" className="w-full h-full">
-                        <div className="flex flex-col items-center justify-center h-full bg-gray-100 p-8 text-center text-gray-700">
-                            <p className="mb-4 text-lg font-semibold">It appears your browser cannot preview PDFs directly.</p>
-                            <p className="mb-6">You can download the file to view it instead.</p>
-                            <button onClick={handleDownload} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                                <DownloadIcon />
-                                <span>Download PDF</span>
-                            </button>
-                        </div>
-                    </object>
+                    <iframe src={url} className="w-full h-full" style={{ border: 'none' }} title="PDF Preview" />
                 </div>
             </div>
         </div>
@@ -406,10 +396,11 @@ const saskPowerPlaceholders = {
 // --- Main Component ---
 interface DfrSaskpowerProps {
     onBack: () => void;
+    onBackDirect?: () => void;
     initialData?: any;
 }
 
-const DfrSaskpower = ({ onBack, initialData }: DfrSaskpowerProps): ReactElement => {
+const DfrSaskpower = ({ onBack, onBackDirect, initialData }: DfrSaskpowerProps): ReactElement => {
     const [data, setData] = useState<DfrSaskpowerData>({
         proponent: 'SaskPower',
         date: '',
@@ -446,6 +437,17 @@ const DfrSaskpower = ({ onBack, initialData }: DfrSaskpowerProps): ReactElement 
     const [zoomLevel, setZoomLevel] = useState(100);
     const [isDirty, setIsDirty] = useState(false);
     const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+    const AUTOSAVE_KEY = 'xtec_autosave_enabled';
+    const AUTOSAVE_INTERVAL_KEY = 'xtec_autosave_interval';
+    const [autosaveEnabled, setAutosaveEnabled] = useState(() => localStorage.getItem(AUTOSAVE_KEY) !== 'false');
+    const [autosaveIntervalMs, setAutosaveIntervalMs] = useState(() => parseInt(localStorage.getItem(AUTOSAVE_INTERVAL_KEY) || '30') * 1000);
+    const [showSaveAsMenu, setShowSaveAsMenu] = useState(false);
+    const saveAsMenuRef = useRef<HTMLDivElement>(null);
+    const quickSaveRef = useRef<() => Promise<void>>();
+    const isDirtyRef = useRef(isDirty);
+    isDirtyRef.current = isDirty;
+    const autosaveEnabledRef = useRef(autosaveEnabled);
+    autosaveEnabledRef.current = autosaveEnabled;
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isDownloadingRef = useRef(false);
 
@@ -461,6 +463,7 @@ const DfrSaskpower = ({ onBack, initialData }: DfrSaskpowerProps): ReactElement 
     // Handler to collect anchor positions from BulletPointEditor instances
     const handleAnchorPositionsChange = useCallback((fieldId: string, anchors: CommentAnchorPosition[]) => {
         setCommentAnchors(prev => {
+            // Build the updated map
             const newMap = new Map(prev);
             // Remove old anchors for this field
             for (const key of newMap.keys()) {
@@ -479,142 +482,165 @@ const DfrSaskpower = ({ onBack, initialData }: DfrSaskpowerProps): ReactElement 
                     height: anchor.height,
                 });
             });
+            // Bail out (return same reference) if nothing changed — prevents re-render loop
+            if (newMap.size === prev.size) {
+                let changed = false;
+                for (const [k, v] of newMap) {
+                    const p = prev.get(k);
+                    if (!p || p.top !== v.top || p.left !== v.left || p.height !== v.height) {
+                        changed = true;
+                        break;
+                    }
+                }
+                if (!changed) return prev;
+            }
             return newMap;
         });
     }, []);
 
     // Field labels for comments panel
-    const fieldLabels: Record<string, string> = {
-        generalActivity: 'General Activity',
-        equipmentOnsite: 'Equipment Onsite',
-        weatherAndGroundConditions: 'Weather & Ground',
-        environmentalProtection: 'Environmental Protection',
-        wildlifeObservations: 'Wildlife Observations',
-        futureMonitoring: 'Future Monitoring',
-    };
+    const fieldLabels: Record<string, string> = useMemo(() => {
+        const labels: Record<string, string> = {
+            generalActivity: 'General Activity',
+            equipmentOnsite: 'Equipment Onsite',
+            weatherAndGroundConditions: 'Weather & Ground',
+            environmentalProtection: 'Environmental Protection',
+            wildlifeObservations: 'Wildlife Observations',
+            futureMonitoring: 'Future Monitoring',
+        };
+        photosData.forEach(p => {
+            labels[`photo-${p.id}-description`] = `Photo ${p.photoNumber}`;
+        });
+        return labels;
+    }, [photosData]);
 
     // Collect all comments from all fields into a single array
     const allComments: FieldComment[] = React.useMemo(() => {
-        if (!data.inlineComments) return [];
-        const fields = ['generalActivity', 'equipmentOnsite', 'weatherAndGroundConditions', 'environmentalProtection', 'wildlifeObservations', 'futureMonitoring'] as const;
         const comments: FieldComment[] = [];
-        fields.forEach(field => {
-            const fieldComments = data.inlineComments?.[field];
-            if (fieldComments && Array.isArray(fieldComments) && fieldComments.length > 0) {
-                fieldComments.forEach(comment => {
-                    // Skip null/undefined comments or those missing required fields
-                    if (!comment || !comment.id || typeof comment.start !== 'number' || typeof comment.end !== 'number') {
-                        return;
-                    }
-                    comments.push({
-                        ...comment,
-                        fieldId: field,
-                        fieldLabel: fieldLabels[field] || field,
+        // Body fields
+        if (data.inlineComments) {
+            const fields = ['generalActivity', 'equipmentOnsite', 'weatherAndGroundConditions', 'environmentalProtection', 'wildlifeObservations', 'futureMonitoring'] as const;
+            fields.forEach(field => {
+                const fieldComments = data.inlineComments?.[field];
+                if (fieldComments && Array.isArray(fieldComments) && fieldComments.length > 0) {
+                    fieldComments.forEach(comment => {
+                        // Skip null/undefined comments or those missing required fields
+                        if (!comment || !comment.id || typeof comment.start !== 'number' || typeof comment.end !== 'number') {
+                            return;
+                        }
+                        comments.push({
+                            ...comment,
+                            fieldId: field,
+                            fieldLabel: fieldLabels[field] || field,
+                        });
                     });
+                }
+            });
+        }
+        // Photo description fields
+        photosData.forEach(photo => {
+            if (photo.inlineComments && Array.isArray(photo.inlineComments) && photo.inlineComments.length > 0) {
+                const fid = `photo-${photo.id}-description`;
+                photo.inlineComments.forEach(comment => {
+                    if (!comment || !comment.id || typeof comment.start !== 'number' || typeof comment.end !== 'number') return;
+                    comments.push({ ...comment, fieldId: fid, fieldLabel: fieldLabels[fid] || `Photo ${photo.photoNumber}` });
                 });
             }
         });
         return comments;
-    }, [data.inlineComments]);
+    }, [data.inlineComments, photosData, fieldLabels]);
 
     const hasAnyInlineComments = allComments.length > 0;
 
-    // Comment action handlers for CommentsRail
-    // Use prev callback pattern throughout to avoid stale closure bugs
-    const handleDeleteComment = (fieldId: string, commentId: string) => {
-        setData(prev => {
-            const fieldComments = (prev.inlineComments as any)?.[fieldId];
-            if (!fieldComments) return prev;
-            return {
+    // Helper: check if a fieldId belongs to a photo description
+    const getPhotoIdFromFieldId = (fieldId: string): number | null => {
+        const match = fieldId.match(/^photo-(\d+)-description$/);
+        return match ? parseInt(match[1], 10) : null;
+    };
+
+    // Helper: get comments array for a fieldId (body field or photo)
+    const getFieldComments = (fieldId: string): TextComment[] | undefined => {
+        const photoId = getPhotoIdFromFieldId(fieldId);
+        if (photoId !== null) {
+            const photo = photosData.find(p => p.id === photoId);
+            return photo?.inlineComments;
+        }
+        return (data.inlineComments as any)?.[fieldId];
+    };
+
+    // Helper: update comments for a fieldId (body field or photo)
+    const setFieldComments = (fieldId: string, updater: (comments: TextComment[]) => TextComment[]) => {
+        const photoId = getPhotoIdFromFieldId(fieldId);
+        if (photoId !== null) {
+            setPhotosData(prev => prev.map(p =>
+                p.id === photoId ? { ...p, inlineComments: updater(p.inlineComments || []) } : p
+            ));
+        } else {
+            setData(prev => ({
                 ...prev,
                 inlineComments: {
                     ...prev.inlineComments,
-                    [fieldId]: fieldComments.filter((c: TextComment) => c.id !== commentId),
+                    [fieldId]: updater((prev.inlineComments as any)?.[fieldId] || []),
                 },
-            };
-        });
+            }));
+        }
         setIsDirty(true);
+    };
+
+    // Comment action handlers for CommentsRail
+    const handleDeleteComment = (fieldId: string, commentId: string) => {
+        if (getFieldComments(fieldId)) {
+            setFieldComments(fieldId, comments => comments.filter(c => c.id !== commentId));
+        }
     };
 
     const handleResolveComment = (fieldId: string, commentId: string) => {
-        setData(prev => {
-            const fieldComments = (prev.inlineComments as any)?.[fieldId];
-            if (!fieldComments) return prev;
-            return {
-                ...prev,
-                inlineComments: {
-                    ...prev.inlineComments,
-                    [fieldId]: fieldComments.map((c: TextComment) =>
-                        c.id === commentId ? { ...c, resolved: !c.resolved } : c
-                    ),
-                },
-            };
-        });
-        setIsDirty(true);
+        if (getFieldComments(fieldId)) {
+            setFieldComments(fieldId, comments =>
+                comments.map(c => c.id === commentId ? { ...c, resolved: !c.resolved } : c)
+            );
+        }
     };
 
     const handleUpdateComment = (fieldId: string, commentId: string, newText: string) => {
-        setData(prev => {
-            const fieldComments = (prev.inlineComments as any)?.[fieldId];
-            if (!fieldComments) return prev;
-            return {
-                ...prev,
-                inlineComments: {
-                    ...prev.inlineComments,
-                    [fieldId]: fieldComments.map((c: TextComment) =>
-                        c.id === commentId ? { ...c, text: newText } : c
-                    ),
-                },
-            };
-        });
-        setIsDirty(true);
+        if (getFieldComments(fieldId)) {
+            setFieldComments(fieldId, comments =>
+                comments.map(c => c.id === commentId ? { ...c, text: newText } : c)
+            );
+        }
     };
 
     // Reply handlers for CommentsRail
     const handleAddReply = (fieldId: string, commentId: string, replyText: string) => {
-        setData(prev => {
-            const fieldComments = (prev.inlineComments as any)?.[fieldId];
-            if (!fieldComments) return prev;
-            return {
-                ...prev,
-                inlineComments: {
-                    ...prev.inlineComments,
-                    [fieldId]: fieldComments.map((c: TextComment) => {
-                        if (c.id === commentId) {
-                            const newReply = {
-                                id: `reply_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                                text: replyText,
-                                author: (window as any).electronAPI?.getUserInfo?.()?.username || 'User',
-                                timestamp: new Date(),
-                            };
-                            return { ...c, replies: [...(c.replies || []), newReply] };
-                        }
-                        return c;
-                    }),
-                },
-            };
-        });
-        setIsDirty(true);
+        if (getFieldComments(fieldId)) {
+            setFieldComments(fieldId, comments =>
+                comments.map(c => {
+                    if (c.id === commentId) {
+                        const newReply = {
+                            id: `reply_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+                            text: replyText,
+                            author: (window as any).electronAPI?.getUserInfo?.()?.username || 'User',
+                            timestamp: new Date(),
+                        };
+                        return { ...c, replies: [...(c.replies || []), newReply] };
+                    }
+                    return c;
+                })
+            );
+        }
     };
 
     const handleDeleteReply = (fieldId: string, commentId: string, replyId: string) => {
-        setData(prev => {
-            const fieldComments = (prev.inlineComments as any)?.[fieldId];
-            if (!fieldComments) return prev;
-            return {
-                ...prev,
-                inlineComments: {
-                    ...prev.inlineComments,
-                    [fieldId]: fieldComments.map((c: TextComment) => {
-                        if (c.id === commentId && c.replies) {
-                            return { ...c, replies: c.replies.filter(r => r.id !== replyId) };
-                        }
-                        return c;
-                    }),
-                },
-            };
-        });
-        setIsDirty(true);
+        if (getFieldComments(fieldId)) {
+            setFieldComments(fieldId, comments =>
+                comments.map((c: TextComment) => {
+                    if (c.id === commentId && c.replies) {
+                        return { ...c, replies: c.replies.filter(r => r.id !== replyId) };
+                    }
+                    return c;
+                })
+            );
+        }
     };
 
     // Focus handler - scrolls to comment in text and triggers glow
@@ -830,6 +856,16 @@ const DfrSaskpower = ({ onBack, initialData }: DfrSaskpowerProps): ReactElement 
         setPhotosData(prev => prev.map(photo => photo.id === id ? { ...photo, [field]: value } : photo));
         setIsDirty(true);
     };
+
+    const handlePhotoCommentsChange = (photoId: number, comments: TextComment[]) => {
+        setPhotosData(prev => prev.map(p => p.id === photoId ? { ...p, inlineComments: comments } : p));
+        setIsDirty(true);
+    };
+
+    const handlePhotoHighlightsChange = (photoId: number, highlights: TextHighlight[]) => {
+        setPhotosData(prev => prev.map(p => p.id === photoId ? { ...p, highlights } : p));
+        setIsDirty(true);
+    };
     
     const handleImageChange = (id: number, file: File) => {
         const allowedTypes = ['image/jpeg', 'image/png'];
@@ -1020,6 +1056,7 @@ const DfrSaskpower = ({ onBack, initialData }: DfrSaskpowerProps): ReactElement 
         const projectName = `${data.projectName || 'Untitled SaskPower DFR'}${dateSuffix}`;
         await addRecentProject(stateForSaving, { type: 'dfrSaskpower', name: projectName, projectNumber: data.projectNumber });
 
+        perfMark('pdf-gen-start');
         const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'letter' });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -1593,6 +1630,8 @@ const renderTextSection = async (
             const footerTextY = pageHeight - borderMargin + 4; doc.text(`Page ${i} of ${totalPages}`, pageWidth - borderMargin, footerTextY, { align: 'right' });
         }
         
+        perfMark('pdf-gen-end');
+        perfMeasure('PDF generation (DfrSaskpower)', 'pdf-gen-start', 'pdf-gen-end');
         const pdfBlob = doc.output('blob');
         const pdfUrl = URL.createObjectURL(pdfBlob);
         setPdfPreview({ url: pdfUrl, filename, blob: pdfBlob });
@@ -1601,21 +1640,25 @@ const renderTextSection = async (
         }
     };
 
-    const handleSaveProject = async () => {
+    const handleQuickSave = async () => {
         const stateForRecentProjects = await prepareStateForRecentProjectStorage(data);
         const formattedDate = formatDateForRecentProject(data.date);
         const dateSuffix = formattedDate ? ` - ${formattedDate}` : '';
         const projectName = `${data.projectName || 'Untitled SaskPower DFR'}${dateSuffix}`;
         await addRecentProject(stateForRecentProjects, { type: 'dfrSaskpower', name: projectName, projectNumber: data.projectNumber });
+        setIsDirty(false);
+        toast('Saved ✓');
+    };
+    quickSaveRef.current = handleQuickSave;
 
+    const handleSaveProject = async () => {
+        await handleQuickSave();
         const photosForExport = photosData.map(({ imageId, ...photo }) => photo);
         const stateForFileExport = { ...data, photosData: photosForExport };
-
         const sanitize = (name: string) => name.replace(/[^a-z0-9_]/gi, '-').toLowerCase();
         const formattedFilenameDate = formatDateForFilename(data.date);
         const sanitizedProjectName = sanitize(data.projectName);
         const filename = `${sanitizedProjectName || 'project'}_${formattedFilenameDate}.spdfr`;
-        
         // @ts-ignore
         if (window.electronAPI) {
             // @ts-ignore
@@ -1630,7 +1673,6 @@ const renderTextSection = async (
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         }
-        setIsDirty(false);
     };
 
     const handleDownloadPhotos = useCallback(async () => {
@@ -1742,6 +1784,10 @@ Description: ${photo.description || 'N/A'}
     // Keyboard shortcut listeners
     useEffect(() => {
         const api = window.electronAPI;
+        if (api?.onQuickSaveShortcut) {
+            api.removeQuickSaveShortcutListener?.();
+            api.onQuickSaveShortcut(() => { quickSaveRef.current?.(); });
+        }
         if (api?.onSaveProjectShortcut) {
             api.removeSaveProjectShortcutListener?.();
             api.onSaveProjectShortcut(() => {
@@ -1755,10 +1801,39 @@ Description: ${photo.description || 'N/A'}
             });
         }
         return () => {
+            api?.removeQuickSaveShortcutListener?.();
             api?.removeSaveProjectShortcutListener?.();
             api?.removeExportPdfShortcutListener?.();
         };
     }, [data, photosData]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (isDirtyRef.current && autosaveEnabledRef.current) {
+                quickSaveRef.current?.();
+            }
+        }, autosaveIntervalMs);
+        return () => clearInterval(interval);
+    }, [autosaveIntervalMs]);
+
+    useEffect(() => {
+        if (!showSaveAsMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (saveAsMenuRef.current && !saveAsMenuRef.current.contains(e.target as Node)) {
+                setShowSaveAsMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showSaveAsMenu]);
+
+    useEffect(() => {
+        const name = data.projectName || '';
+        const num = data.projectNumber || '';
+        const prefix = [num, name].filter(Boolean).join(' – ');
+        document.title = prefix ? `${prefix} | X-TEC` : 'X-TEC Digital Reporting';
+        return () => { document.title = 'X-TEC Digital Reporting'; };
+    }, [data.projectName, data.projectNumber]);
 
     const handleOpenProject = async () => {
         // @ts-ignore
@@ -1834,32 +1909,58 @@ Description: ${photo.description || 'N/A'}
                 )}
                 <div className="sticky top-0 z-40 bg-gray-100 dark:bg-gray-900 py-2 mb-4 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex flex-wrap justify-between items-center gap-2">
-                        <button onClick={handleBack} className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+                        <button onClick={handleBack} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                             <ArrowLeftIcon /> <span>Home</span>
                         </button>
                         <div className="flex flex-wrap justify-end gap-2">
-                            <button onClick={handleOpenProject} className="bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Autosave</span>
+                                <button
+                                    onClick={() => { const v = !autosaveEnabled; setAutosaveEnabled(v); localStorage.setItem(AUTOSAVE_KEY, String(v)); }}
+                                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${autosaveEnabled ? 'bg-[#007D8C]' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                    title={autosaveEnabled ? 'Autosave on — click to disable' : 'Autosave off — click to enable'}
+                                >
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${autosaveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </button>
+                            </div>
+                            <button onClick={handleQuickSave} title="Save (Ctrl+S)" className="bg-[#007D8C] hover:bg-[#006b7a] text-white font-semibold py-2 px-3 rounded-lg inline-flex items-center transition duration-200">
+                                <SaveIcon />
+                            </button>
+                            <button onClick={handleOpenProject} className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                                 <FolderOpenIcon /> <span>Open Project</span>
                             </button>
-                             <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileSelected}
-                                style={{ display: 'none' }}
-                                accept=".spdfr"
-                            />
-                            <button onClick={handleSaveProject} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                                <SaveIcon /> <span>Save Project</span>
-                            </button>
+                            <input type="file" ref={fileInputRef} onChange={handleFileSelected} style={{ display: 'none' }} accept=".spdfr" />
+                            <div className="relative" ref={saveAsMenuRef}>
+                                <button
+                                    onClick={() => setShowSaveAsMenu(v => !v)}
+                                    className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
+                                >
+                                    <span>Save As...</span>
+                                    <ChevronDownIcon className="h-4 w-4" />
+                                </button>
+                                {showSaveAsMenu && (
+                                    <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+                                        <button
+                                            onClick={() => { setShowSaveAsMenu(false); handleSaveProject(); }}
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                        >
+                                            <SaveIcon className="h-4 w-4 flex-shrink-0" /> Project File
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowSaveAsMenu(false); handleSavePdf(); }}
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                        >
+                                            <DownloadIcon className="h-4 w-4 flex-shrink-0" /> PDF
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             {/* @ts-ignore */}
                             {!window.electronAPI && (
-                                <button onClick={handleDownloadPhotos} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+                                <button onClick={handleDownloadPhotos} className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                                     <FolderArrowDownIcon /> <span>Download Photos</span>
                                 </button>
                             )}
-                            <button onClick={handleSavePdf} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                                <DownloadIcon /> <span>Save to PDF</span>
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -1880,12 +1981,16 @@ Description: ${photo.description || 'N/A'}
                 <div className="main-content space-y-8" style={{ overflow: 'visible', transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left', width: `${10000 / zoomLevel}%` }}>
                     {/* Header Section */}
                     <div className="bg-white dark:bg-gray-800 p-6 shadow-md rounded-lg transition-colors duration-200" style={{ overflow: 'visible' }}>
-                        <div className="flex justify-center md:justify-start mb-4">
-                             <SafeImage fileName="xterra-logo.jpg" alt="X-TERRA Logo" className="h-14 w-auto mix-blend-multiply dark:mix-blend-normal dark:bg-white dark:p-1 dark:rounded-sm" />
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] md:items-center pb-4 gap-4">
+                            <div className="flex justify-center md:justify-start">
+                                <SafeImage fileName="xterra-logo.png" alt="X-TERRA Logo" className="h-14 w-auto dark:hidden" />
+                                <SafeImage fileName="xterra-white.png" alt="X-TERRA Logo" className="h-14 w-auto hidden dark:block" />
+                            </div>
+                            <h1 className="font-extrabold text-[#007D8C] tracking-wider text-center whitespace-nowrap text-4xl">
+                                DAILY FIELD REPORT
+                            </h1>
+                            <div></div>
                         </div>
-                         <h1 className="font-extrabold text-[#007D8C] tracking-wider text-center text-3xl mb-4">
-                            DAILY FIELD REPORT
-                        </h1>
                         <div className="border-t-4 border-[#007D8C] mb-4"></div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2024,6 +2129,12 @@ Description: ${photo.description || 'N/A'}
                                     headerDate={data.date}
                                     headerLocation={data.location}
                                     onAutoFill={(f, val) => handlePhotoDataChange(photo.id, f, val)}
+                                    inlineComments={photo.inlineComments}
+                                    onInlineCommentsChange={(comments) => handlePhotoCommentsChange(photo.id, comments)}
+                                    highlights={photo.highlights}
+                                    onHighlightsChange={(highlights) => handlePhotoHighlightsChange(photo.id, highlights)}
+                                    onAnchorPositionsChange={(anchors) => handleAnchorPositionsChange(`photo-${photo.id}-description`, anchors)}
+                                    hoveredCommentId={hoveredCommentId}
                                 />
                                 {index < photosData.length - 1 && (
                                      <div className="relative my-6 flex items-center justify-center">
@@ -2140,7 +2251,7 @@ Description: ${photo.description || 'N/A'}
                                         // @ts-ignore
                                         window.electronAPI?.confirmClose();
                                     } else {
-                                        onBack();
+                                        (onBackDirect ?? onBack)();
                                     }
                                 }}
                                 className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition"

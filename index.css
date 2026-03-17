@@ -2,9 +2,437 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent Tailwind preflight from stripping Ant Design base styles */
+@layer base {
+    button, [type='button'], [type='reset'], [type='submit'] {
+        background-image: none;
+    }
+}
+
+/* Landing page background slow zoom */
+@keyframes landing-slow-zoom {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.03); }
+}
+.landing-bg-zoom {
+    animation: landing-slow-zoom 30s linear infinite alternate;
+    will-change: transform;
+}
+
+/* Landing page photo credit fade-in */
+@keyframes landing-fade-in {
+    0% { opacity: 0; }
+    100% { opacity: 0.8; }
+}
+.landing-fade-in {
+    animation: landing-fade-in 1.5s ease-out forwards;
+    opacity: 0;
+}
+
 body {
     font-family: Calibri, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
+
+/* Hide scrollbars globally while keeping scroll functionality */
+* {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+/* ============================================================
+   PREMIUM APPLE LIQUID GLASS MATERIAL SYSTEM (Ultra-Thin)
+   ============================================================
+   Mimics macOS Sonoma/Ventura native glass material through:
+   - High-saturation backdrop filters with brightness boost
+   - Layered shadow system (ambient + depth + inset edge light)
+   - Micro-grain noise texture overlay
+   - Edge refraction rim for light-catching realism
+   - Internal light diffusion for depth perception
+   - Spring-physics animations for interactive states
+   - Memoized class computation for performance
+   ============================================================ */
+
+/* --- Noise grain overlay (applied once on the landing page) --- */
+.glass-noise::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.032;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 180px 180px;
+}
+
+/* --- Base glass surface with edge refraction rim --- */
+.glass-surface {
+    position: relative;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    transition-property: transform, box-shadow, background-color, border-color;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition-duration: 280ms;
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+/* Ensure all direct children render above blur effect */
+.glass-surface > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Edge refraction rim — subtle white gradient catching light */
+.glass-surface::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.15) 0%, 
+        rgba(255, 255, 255, 0.03) 25%, 
+        transparent 50%,
+        rgba(0, 0, 0, 0.02) 75%,
+        rgba(0, 0, 0, 0.08) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+    z-index: 2;
+}
+html.dark .glass-surface::before {
+    background: linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.08) 0%, 
+        rgba(255, 255, 255, 0.01) 25%, 
+        transparent 50%,
+        rgba(0, 0, 0, 0.05) 75%,
+        rgba(0, 0, 0, 0.15) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    z-index: 2;
+}
+
+/* Inner specular highlight edge with enhanced light diffusion */
+.glass-surface::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 2;
+    /* Specular edge highlight */
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+                inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    /* Light diffusion glow (subtle radial gradient) */
+    background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+}
+html.dark .glass-surface::after {
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+                inset 0 0 0 0.5px rgba(255, 255, 255, 0.04);
+    background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04) 0%, transparent 70%);
+    z-index: 2;
+}
+
+/* --- Depth 0: Hero / Base panel (maximum blur for hero surfaces) --- */
+.glass-depth-0 {
+    backdrop-filter: blur(40px) saturate(150%) brightness(1.04);
+    -webkit-backdrop-filter: blur(40px) saturate(150%) brightness(1.04);
+    background: rgba(255, 255, 255, 0.58);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.06),
+        0 2px 8px rgba(0, 0, 0, 0.03),
+        inset 0 1px 2px rgba(255, 255, 255, 0.20);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+html.dark .glass-depth-0 {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #202020;
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.40),
+        0 2px 8px rgba(0, 0, 0, 0.25),
+        inset 0 1px 2px rgba(255, 255, 255, 0.06);
+}
+
+/* --- Depth 1: Mid-layer cards --- */
+.glass-depth-1 {
+    backdrop-filter: blur(12px) saturate(140%) brightness(1.04);
+    -webkit-backdrop-filter: blur(12px) saturate(140%) brightness(1.04);
+    background: rgba(255, 255, 255, 0.50);
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.05),
+        0 1px 4px rgba(0, 0, 0, 0.02),
+        inset 0 0.5px 1px rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+html.dark .glass-depth-1 {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #2b2b2b;
+    border-color: rgba(255, 255, 255, 0.07);
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.32),
+        0 1px 4px rgba(0, 0, 0, 0.16),
+        inset 0 0.5px 1px rgba(255, 255, 255, 0.05);
+}
+
+/* --- Depth 2: Floating micro-glass controls --- */
+.glass-depth-2 {
+    backdrop-filter: blur(20px) saturate(140%) brightness(1.04);
+    -webkit-backdrop-filter: blur(20px) saturate(140%) brightness(1.04);
+    background: rgba(255, 255, 255, 0.42);
+    box-shadow:
+        0 2px 12px rgba(0, 0, 0, 0.03),
+        0 0.5px 2px rgba(0, 0, 0, 0.01),
+        inset 0 0.5px 1px rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.22);
+    border-radius: 16px;
+}
+html.dark .glass-depth-2 {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #363636;
+    border-color: rgba(255, 255, 255, 0.06);
+    box-shadow:
+        0 2px 12px rgba(0, 0, 0, 0.26),
+        0 0.5px 2px rgba(0, 0, 0, 0.12),
+        inset 0 0.5px 1px rgba(255, 255, 255, 0.04);
+}
+
+/* --- Adaptive brand tint infusion (memoized per depth) --- */
+.glass-brand-tint.glass-depth-0 { 
+    background-image: linear-gradient(135deg, rgba(0, 125, 140, 0.05) 0%, transparent 60%);
+}
+.glass-brand-tint.glass-depth-1 { 
+    background-image: linear-gradient(135deg, rgba(0, 125, 140, 0.04) 0%, transparent 60%);
+}
+.glass-brand-tint.glass-depth-2 { 
+    background-image: linear-gradient(135deg, rgba(0, 125, 140, 0.03) 0%, transparent 60%);
+}
+
+html.dark .glass-brand-tint.glass-depth-0 { 
+    background-image: linear-gradient(135deg, rgba(0, 125, 140, 0.08) 0%, transparent 60%);
+}
+html.dark .glass-brand-tint.glass-depth-1 { 
+    background-image: linear-gradient(135deg, rgba(0, 125, 140, 0.07) 0%, transparent 60%);
+}
+html.dark .glass-brand-tint.glass-depth-2 { 
+    background-image: linear-gradient(135deg, rgba(0, 125, 140, 0.06) 0%, transparent 60%);
+}
+
+/* --- Interactive glass (cards, buttons) — spring hover + press with depth-aware lift --- */
+.glass-interactive {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Depth-aware hover lift (memoized as glass-lift-{size}) */
+.glass-lift-3:hover,
+.glass-interactive:hover {
+    transform: translateY(-3px) scale(1.0085);
+    box-shadow:
+        0 8px 28px rgba(0, 0, 0, 0.12),
+        0 2px 8px rgba(0, 0, 0, 0.06),
+        0 0 0 1px rgba(0, 125, 140, 0.18);
+}
+
+.glass-lift-5:hover {
+    transform: translateY(-5px) scale(1.0100);
+    box-shadow:
+        0 12px 36px rgba(0, 0, 0, 0.14),
+        0 3px 10px rgba(0, 0, 0, 0.08),
+        0 0 0 1px rgba(0, 125, 140, 0.20);
+}
+
+.glass-lift-2:hover {
+    transform: translateY(-2px) scale(1.0070);
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.10),
+        0 1.5px 6px rgba(0, 0, 0, 0.04),
+        0 0 0 1px rgba(0, 125, 140, 0.15);
+}
+
+html.dark .glass-interactive:hover,
+html.dark .glass-lift-3:hover {
+    box-shadow:
+        0 8px 28px rgba(0, 0, 0, 0.32),
+        0 2px 8px rgba(0, 0, 0, 0.20),
+        0 0 0 1px rgba(0, 125, 140, 0.28);
+}
+
+html.dark .glass-lift-5:hover {
+    box-shadow:
+        0 12px 36px rgba(0, 0, 0, 0.38),
+        0 3px 10px rgba(0, 0, 0, 0.25),
+        0 0 0 1px rgba(0, 125, 140, 0.32);
+}
+
+html.dark .glass-lift-2:hover {
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.28),
+        0 1.5px 6px rgba(0, 0, 0, 0.14),
+        0 0 0 1px rgba(0, 125, 140, 0.22);
+}
+
+/* Brightness shift on hover — specular highlight enhancement */
+.glass-interactive:hover::after {
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.22),
+                inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+
+html.dark .glass-interactive:hover::after {
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+                inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+
+/* Press / active: soft compression with tight spring */
+.glass-interactive:active {
+    transform: translateY(0px) scale(0.978);
+    transition-duration: 100ms;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Glass search input --- */
+.glass-input {
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+html.dark .glass-input {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #3d3d3d;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+.glass-input:focus-within {
+    border-color: rgba(0, 125, 140, 0.6);
+    box-shadow: 0 0 0 3px rgba(0, 125, 140, 0.15);
+    backdrop-filter: blur(20px) saturate(170%);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+}
+
+/* --- Glass list container --- */
+.glass-list {
+    backdrop-filter: blur(20px) saturate(170%);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+}
+html.dark .glass-list {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #1e1e1e;
+    border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* --- Glass icon holder --- */
+.glass-icon-holder {
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    background: rgba(0, 125, 140, 0.10);
+    border: 1px solid rgba(0, 125, 140, 0.12);
+    border-radius: 14px;
+    transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 280ms ease, border-color 280ms ease;
+    transform: translateZ(0);
+    will-change: transform;
+}
+html.dark .glass-icon-holder {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #073d44;
+    border-color: rgba(0, 125, 140, 0.30);
+}
+.glass-interactive:hover .glass-icon-holder {
+    transform: scale(1.10);
+    background: rgba(0, 125, 140, 0.15);
+    border-color: rgba(0, 125, 140, 0.24);
+}
+
+/* --- Glass context menu --- */
+.glass-menu {
+    backdrop-filter: blur(32px) saturate(180%);
+    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 14px;
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.10),
+        0 2px 8px rgba(0, 0, 0, 0.05),
+        inset 0 1px 2px rgba(255, 255, 255, 0.20);
+}
+html.dark .glass-menu {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #2b2b2b;
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.45),
+        0 2px 8px rgba(0, 0, 0, 0.28),
+        inset 0 1px 2px rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================================
+   WINDOWS-STYLE DARK MODE — Global neutral gray palette
+   Remaps all Tailwind dark:bg-gray-* / dark:border-gray-* to
+   true neutral grays matching Windows 11 dark mode.
+   Theme-specific overrides below have higher CSS specificity
+   and still win when a theme (grey/sepia/blue/hc) is active.
+   ============================================================ */
+
+/* Backgrounds */
+html.dark .dark\:bg-gray-950 { background-color: #141414 !important; }
+html.dark .dark\:bg-gray-900 { background-color: #1c1c1c !important; }
+html.dark .dark\:bg-gray-800 { background-color: #2b2b2b !important; }
+html.dark .dark\:bg-gray-700 { background-color: #363636 !important; }
+html.dark .dark\:bg-gray-600 { background-color: #404040 !important; }
+html.dark .dark\:bg-gray-500 { background-color: #555555 !important; }
+
+/* Borders */
+html.dark .dark\:border-gray-800 { border-color: #3d3d3d !important; }
+html.dark .dark\:border-gray-700 { border-color: #3d3d3d !important; }
+html.dark .dark\:border-gray-600 { border-color: #4a4a4a !important; }
+html.dark .dark\:border-gray-500 { border-color: #555555 !important; }
+
+/* Hover backgrounds */
+html.dark .dark\:hover\:bg-gray-900:hover { background-color: #1c1c1c !important; }
+html.dark .dark\:hover\:bg-gray-800:hover { background-color: #2b2b2b !important; }
+html.dark .dark\:hover\:bg-gray-700:hover { background-color: #363636 !important; }
+html.dark .dark\:hover\:bg-gray-600:hover { background-color: #404040 !important; }
+
+/* Focus backgrounds */
+html.dark .dark\:focus\:bg-gray-800:focus { background-color: #2b2b2b !important; }
+html.dark .dark\:focus\:bg-gray-700:focus { background-color: #363636 !important; }
+
+/* Gradient from-stops */
+html.dark .dark\:from-gray-900 {
+    --tw-gradient-from: #1c1c1c var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: rgba(28, 28, 28, 0) var(--tw-gradient-to-position) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+html.dark .dark\:from-gray-800 {
+    --tw-gradient-from: #2b2b2b var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: rgba(43, 43, 43, 0) var(--tw-gradient-to-position) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+/* Gradient to-stops */
+html.dark .dark\:to-gray-900 { --tw-gradient-to: #1c1c1c var(--tw-gradient-to-position) !important; }
+html.dark .dark\:to-gray-800 { --tw-gradient-to: #2b2b2b var(--tw-gradient-to-position) !important; }
+html.dark .dark\:to-gray-700 { --tw-gradient-to: #363636 var(--tw-gradient-to-position) !important; }
 
 /* Grey Dark Theme — neutral grays replacing Tailwind's blue-tinted grays */
 .theme-grey {
@@ -226,4 +654,131 @@ html.dark.theme-blue .bg-gradient-to-t {
 /* High Contrast gradient — maximum contrast for accessibility */
 html.dark.theme-high-contrast .bg-gradient-to-t {
     background-image: linear-gradient(to top, #000000 0%, rgba(0, 0, 0, 0) 50%, #ffffff 100%) !important;
+}
+
+/* ============================================================
+   LANDING PAGE — PREMIUM VISUAL SYSTEM
+   Controlled, confident, technical. Industrial enterprise tone.
+   ArcGIS Pro × Apple Glass × Field Engineering Software.
+   ============================================================ */
+
+/* --- Report selection card hover lift + teal ring --- */
+.xtec-card {
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out, border-color 0.3s ease-out;
+}
+.xtec-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow:
+        0 16px 40px rgba(0, 0, 0, 0.13),
+        0 4px 12px rgba(0, 0, 0, 0.08),
+        0 0 0 1px rgba(0, 125, 140, 0.22);
+    border-color: rgba(0, 125, 140, 0.40) !important;
+}
+html.dark .xtec-card:hover {
+    box-shadow:
+        0 16px 40px rgba(0, 0, 0, 0.45),
+        0 4px 12px rgba(0, 0, 0, 0.28),
+        0 0 0 1px rgba(0, 125, 140, 0.38);
+    border-color: rgba(0, 125, 140, 0.50) !important;
+}
+.xtec-card:active {
+    transform: translateY(0px) scale(0.98);
+    transition-duration: 100ms;
+}
+
+/* --- Card icon accent container --- */
+.xtec-card-icon {
+    background: rgba(0, 125, 140, 0.08);
+    border: 1px solid rgba(0, 125, 140, 0.15);
+    transition: border-color 0.3s ease-out, box-shadow 0.3s ease-out, background 0.3s ease-out, transform 0.3s ease-out;
+}
+html.dark .xtec-card-icon {
+    background: rgba(0, 125, 140, 0.12);
+    border-color: rgba(0, 125, 140, 0.28);
+}
+.group:hover .xtec-card-icon {
+    background: rgba(0, 125, 140, 0.14);
+    border-color: rgba(0, 125, 140, 0.45);
+    box-shadow: 0 0 20px rgba(0, 125, 140, 0.22);
+    transform: scale(1.06);
+}
+html.dark .group:hover .xtec-card-icon {
+    background: rgba(0, 125, 140, 0.18);
+    border-color: rgba(0, 125, 140, 0.55);
+    box-shadow: 0 0 24px rgba(0, 125, 140, 0.30);
+}
+
+/* ============================================================
+   VIEW TRANSITIONS — Report ↔ Landing Page
+   Pure opacity + transform; works identically in light & dark
+   because the page background shows through naturally.
+   ============================================================ */
+
+/* Report enter: instant feel, subtle fade only */
+@keyframes xtec-report-enter-kf {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* Report exit: fast fade out */
+@keyframes xtec-report-exit-kf {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* Landing return: quick fade in */
+@keyframes xtec-landing-return-kf {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.xtec-report-enter {
+    animation: xtec-report-enter-kf 120ms ease-out backwards;
+}
+
+.xtec-report-exit {
+    animation: xtec-report-exit-kf 100ms ease-in forwards;
+    pointer-events: none;
+}
+
+.xtec-landing-return {
+    animation: xtec-landing-return-kf 150ms ease-out backwards;
+}
+
+/* --- Recent project row — left teal accent on hover (no layout shift) --- */
+.xtec-project-row {
+    transition: box-shadow 0.15s ease;
+}
+.xtec-project-row:hover {
+    box-shadow: inset 3px 0 0 #007D8C;
+}
+
+/* ============================================================
+   MODAL ENTRANCE ANIMATION
+   Applied to the inner dialog panel (not the backdrop)
+   ============================================================ */
+@keyframes xtec-modal-in {
+    from { opacity: 0; transform: scale(0.97) translateY(6px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+
+.xtec-modal-enter {
+    animation: xtec-modal-in 160ms ease-out forwards;
+}
+
+/* ============================================================
+   TOAST NOTIFICATIONS
+   ============================================================ */
+@keyframes xtec-toast-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+@keyframes xtec-toast-out {
+    from { opacity: 1; transform: translateY(0)   scale(1);    }
+    to   { opacity: 0; transform: translateY(4px)  scale(0.97); }
+}
+
+.xtec-toast {
+    animation: xtec-toast-in 180ms ease-out forwards;
 }

@@ -17,12 +17,39 @@ const getCurrentUsername = (): string => {
         const electronAPI = (window as any).electronAPI;
         if (electronAPI?.getUserInfo) {
             const userInfo = electronAPI.getUserInfo();
-            if (userInfo?.username) return userInfo.username;
+            if (userInfo?.username) {
+                // Cache so ProfileAvatar can compare reliably even if API is slow
+                localStorage.setItem('xtec_current_username', userInfo.username);
+                return userInfo.username;
+            }
         }
     } catch (error) {
         console.error('Error getting username:', error);
     }
-    return 'User';
+    return localStorage.getItem('xtec_current_username') || 'User';
+};
+
+const ProfileAvatar: React.FC<{ author: string; size: 'sm' | 'md'; authorAvatar?: string }> = ({ author, size, authorAvatar }) => {
+    const currentUser = getCurrentUsername();
+    // Case-insensitive match — Windows usernames can vary in case between sessions.
+    // For the current user, always use their live profile picture so it updates instantly.
+    // For other users, use the avatar embedded in the comment (travels with the project file).
+    const isMe = currentUser.toLowerCase() === author.toLowerCase();
+    const avatarSrc = isMe
+        ? (localStorage.getItem('xtec_profile_picture') || authorAvatar || null)
+        : (authorAvatar || null);
+    const dims = size === 'sm' ? 'w-6 h-6' : 'w-7 h-7';
+    const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs';
+    const bgColor = size === 'sm' ? 'bg-gray-400 dark:bg-gray-600' : 'bg-blue-500';
+
+    if (avatarSrc) {
+        return <img src={avatarSrc} alt={author} className={`${dims} rounded-full object-cover flex-shrink-0`} />;
+    }
+    return (
+        <div className={`${dims} rounded-full ${bgColor} flex items-center justify-center text-white ${textSize} font-semibold flex-shrink-0`}>
+            {author.charAt(0).toUpperCase()}
+        </div>
+    );
 };
 
 export interface FieldComment extends TextComment {
@@ -84,9 +111,7 @@ const ReplyItem: React.FC<{
     return (
         <div className="pl-3 py-2 border-l-2 border-gray-200 dark:border-gray-600 ml-2 group/reply">
             <div className="flex items-start gap-2">
-                <div className="w-6 h-6 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-[10px] font-semibold flex-shrink-0">
-                    {reply.author.charAt(0).toUpperCase()}
-                </div>
+                <ProfileAvatar author={reply.author} size="sm" authorAvatar={reply.authorAvatar} />
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
@@ -191,9 +216,7 @@ const CommentCard: React.FC<CommentCardProps> = ({
             <div className="p-3">
                 {/* Header */}
                 <div className="flex items-start gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {comment.author.charAt(0).toUpperCase()}
-                    </div>
+                    <ProfileAvatar author={comment.author} size="md" authorAvatar={comment.authorAvatar} />
                     <div className="flex-1 min-w-0">
                         <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium truncate">
                             {comment.fieldLabel}
@@ -402,6 +425,10 @@ const CommentsRail: React.FC<CommentsRailProps> = ({
     railWidth,
 }) => {
     const [filter, setFilter] = useState<FilterTab>('open');
+    const [showFilters, setShowFilters] = useState(false);
+    const [filterSection, setFilterSection] = useState('');
+    const [filterUser, setFilterUser] = useState('');
+    const [filterDate, setFilterDate] = useState('');
 
     // Validate comments
     const validComments = useMemo(() => {
@@ -412,14 +439,42 @@ const CommentsRail: React.FC<CommentsRailProps> = ({
         );
     }, [comments]);
 
-    // Filter by tab
+    // Unique section and user values for dropdowns
+    const uniqueSections = useMemo(() =>
+        [...new Set(validComments.map(c => c.fieldLabel))].sort(),
+    [validComments]);
+
+    const uniqueUsers = useMemo(() =>
+        [...new Set(validComments.map(c => c.author))].sort(),
+    [validComments]);
+
+    // Filter by tab + section + user + date
     const filteredComments = useMemo(() => {
+        let result = validComments;
         switch (filter) {
-            case 'open': return validComments.filter(c => !c.resolved);
-            case 'resolved': return validComments.filter(c => c.resolved);
-            default: return validComments;
+            case 'open': result = result.filter(c => !c.resolved); break;
+            case 'resolved': result = result.filter(c => c.resolved); break;
         }
-    }, [validComments, filter]);
+        if (filterSection) result = result.filter(c => c.fieldLabel === filterSection);
+        if (filterUser) result = result.filter(c => c.author === filterUser);
+        if (filterDate) {
+            const now = new Date();
+            result = result.filter(c => {
+                const d = new Date(c.timestamp);
+                if (filterDate === 'today') return d.toDateString() === now.toDateString();
+                if (filterDate === 'week') {
+                    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - 7);
+                    return d >= cutoff;
+                }
+                if (filterDate === 'month') {
+                    const cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);
+                    return d >= cutoff;
+                }
+                return true;
+            });
+        }
+        return result;
+    }, [validComments, filter, filterSection, filterUser, filterDate]);
 
     // Sort by field then timestamp
     const sortedComments = useMemo(() => {
@@ -467,15 +522,30 @@ const CommentsRail: React.FC<CommentsRailProps> = ({
             <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                 <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Comments</h3>
-                    <button
-                        onClick={onToggleCollapsed}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                        title="Hide comments"
-                    >
-                        <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setShowFilters(v => !v)}
+                            className={`p-1 rounded transition-colors ${
+                                showFilters || filterSection || filterUser || filterDate
+                                    ? 'bg-[#007D8C]/10 text-[#007D8C]'
+                                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'
+                            }`}
+                            title="Toggle filters"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={onToggleCollapsed}
+                            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                            title="Hide comments"
+                        >
+                            <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Filter tabs */}
@@ -496,6 +566,49 @@ const CommentsRail: React.FC<CommentsRailProps> = ({
                         </button>
                     ))}
                 </div>
+
+                {/* Section / User / Date filters */}
+                {showFilters && <div className="flex gap-1 mt-2 flex-wrap">
+                    {uniqueSections.length > 1 && (
+                        <select
+                            value={filterSection}
+                            onChange={(e) => setFilterSection(e.target.value)}
+                            className="flex-1 min-w-0 text-[10px] bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-1 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-[#007D8C]"
+                        >
+                            <option value="">All Sections</option>
+                            {uniqueSections.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    )}
+                    {uniqueUsers.length > 1 && (
+                        <select
+                            value={filterUser}
+                            onChange={(e) => setFilterUser(e.target.value)}
+                            className="flex-1 min-w-0 text-[10px] bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-1 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-[#007D8C]"
+                        >
+                            <option value="">All Users</option>
+                            {uniqueUsers.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                    )}
+                    <select
+                        value={filterDate}
+                        onChange={(e) => setFilterDate(e.target.value)}
+                        className="flex-1 min-w-0 text-[10px] bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-1 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-[#007D8C]"
+                    >
+                        <option value="">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                    </select>
+                    {(filterSection || filterUser || filterDate) && (
+                        <button
+                            onClick={() => { setFilterSection(''); setFilterUser(''); setFilterDate(''); }}
+                            className="px-1.5 py-1 text-[10px] text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-900/20 rounded"
+                            title="Clear filters"
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>}
             </div>
 
             {/* Scrollable content */}

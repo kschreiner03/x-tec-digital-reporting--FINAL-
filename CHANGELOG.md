@@ -1,77 +1,76 @@
 # Changelog
 
-All notable changes to X-TEC Digital Reporting will be documented in this file.
+All notable changes to X-TEC Digital Reporting are documented here.
 
 ---
 
-## [V 1.1.4] - 2026-02-06
+## [1.1.5] — Upcoming
+
+---
+
+## [1.1.4 beta] — March 2026
 
 ### Added
 
-#### Inline Comments & Highlights System
-
+- Performance instrumentation (`perf.ts`) — opt-in timing for IPC, DB reads/writes, and PDF generation
+- Content Security Policy (CSP) meta tag in renderer for improved security
 - Text highlighting with 5 color options (Yellow, Green, Blue, Pink, Orange) on all text fields
-- Inline comments on selected text with full create, edit, resolve, reply, and delete support
-- Comments Rail sidebar showing all comments for the current report, aligned to their source text
-- "Find" button on comment cards that scrolls to and temporarily glows the referenced text
+- Inline comments on selected text with create, edit, resolve, reply, and delete support
+- Comments Rail sidebar showing all comments, aligned to their source text
+- "Find" button on comment cards that scrolls to and highlights the referenced text
 - Filter tabs (All / Open / Done) in the Comments Rail
 - Comment author badges using Windows username
 - Relative timestamps on comments (e.g., "5m ago")
 - Resolve all comments button
-
-#### Unsaved Changes Protection
-
-- "Unsaved Changes" confirmation modal when clicking the Home button with unsaved work
-- Same modal appears when clicking the window close (X) button in Electron
-- "Cancel" to stay, "Leave Without Saving" to discard changes
-- Electron IPC integration (`close-attempted` / `confirm-close`) for window close intercept
-- Browser `beforeunload` fallback for non-Electron environments
-- Dirty state tracking on all data change handlers across all report types
-
-#### SaskPower DFR Validation
-
-- All fields now highlight red when required and empty on save attempt
-- `isInvalid` prop added to all EditableField components (header fields)
-- `isInvalid` prop added to all BulletPointEditor components (body fields)
-- `isInvalid` prop added to ChecklistRow component (daily checklists) with red text and background styling
-
-#### Photo Drag-and-Drop Reordering
-
-- Drag-and-drop reordering of photos using grip handle (replaces up/down arrow buttons)
-- Works across all report types: Standard DFR, SaskPower DFR, Photo Log, and Combined Log
-- Powered by @dnd-kit/sortable for smooth, accessible drag interactions
-
-#### Project Hover Preview
-
-- Thumbnail preview tooltip when hovering over recent projects on the Landing Page
-- Auto-generated from the first photo in each report (or styled placeholder if no photos)
-- Thumbnails stored in IndexedDB and prefetched on Landing Page load
-- Thumbnails cleaned up automatically when projects are deleted
-
-#### Layout & UI Improvements
-
-- Wider content area in DfrStandard and DfrSaskpower by removing restrictive xl/2xl breakpoint constraints
-- Landing Page recent projects dropdown (3-dots menu) no longer gets cut off behind other elements
-- Fixed `overflow-hidden` to `overflow-visible` on the recent projects container
-- Increased dropdown z-index to z-50 for proper layering
+- Auto-save — reports are automatically saved to the local database as you work
+- "Unsaved Changes" confirmation modal when navigating away from a report with unsaved work
+- Same modal triggered by the window close (X) button in Electron
+- Drag-to-reorder photos using grip handles (replaces up/down arrow buttons)
+- Photo thumbnail previews on recent projects on the landing page
+- Preset wallpapers — choose a background photo for the landing page from the Settings menu
 - Zoom controls (Zoom In, Zoom Out, Reset) on DFR report views
+- SaskPower DFR required fields highlight red on failed save attempt
+- What's New modal shown once after each update with release highlights
+- Update modal with Download Now / Download Later / Install Now flow
+
+### Changed
+
+- Report components (PhotoLog, DfrStandard, DfrSaskpower, CombinedLog) are now lazy-loaded, reducing startup time
+- Removed Guided Tour feature
+- Removed DevTools (F12) shortcut for production builds
 
 ### Fixed
 
-- Missing `fieldId` prop on all BulletPointEditor usages in DfrStandard and DfrSaskpower
-- Incorrect field name `'communication'` in DfrSaskpower inline comments and field labels, replaced with correct `'environmentalProtection'`
-- `string | undefined` not assignable to `string | null` type error in CombinedLog photo import
+- UpdateModal auto-close timer being silently cancelled by a re-render (stale closure; fixed with `useRef`)
+- Squirrel installer loading GIF not closing after the app launches
+- PDF preview not rendering after CSP was introduced (`frame-src blob:` added)
+- Landing page recent projects dropdown clipping behind other elements
+- Wider content area in DfrStandard and DfrSaskpower (removed restrictive breakpoint constraints)
+- Missing `fieldId` prop on BulletPointEditor usages in DfrStandard and DfrSaskpower
+- Various bug fixes and performance improvements
+
+### Security
+
+- Upgraded jsPDF to v4.x
+- Forced DOMPurify ≥ 3.3.2 via `overrides` to resolve transitive vulnerability
+
+### Removed
+
+- Unused npm dependencies: `antd`, `image-clipper`, `exifr`, `@tensorflow/tfjs`, `@tensorflow-models/coco-ssd`
+- Unused source files: `GuidedTour.tsx`, `subjectDetection.ts`, `GlassSurface.tsx`, `xterraLogo.tsx`,
+  `pdfPhotoUtils.ts`, `pdfcanvaspreview.tsx`, `ProjectPreviewTooltip.tsx`, `PageCommentsPanel.tsx`,
+  `HighlightableBulletPointEditor.tsx`, `HighlightableTextarea.tsx`, `Assetimage.tsx`, `useComments.ts`
 
 ---
 
-## [1.1.4] - Initial Release
+## [1.1.0] — 2025
 
 - Standard DFR report creation and PDF export
 - SaskPower DFR report creation and PDF export
 - Photo Log with image upload, auto-crop, and PDF export
 - Combined Log for merging photos from multiple projects
 - Recent Projects with IndexedDB storage
-- Project save/load (.dfr, .spdfr, .plog, .clog file formats)
+- Project save/load (`.dfr`, `.spdfr`, `.plog`, `.clog` file formats)
 - Dark mode support
 - Spell check with configurable languages
 - Electron desktop app with auto-updater

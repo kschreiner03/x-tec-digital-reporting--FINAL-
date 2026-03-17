@@ -2,12 +2,13 @@ import React, { useState, ReactElement, useEffect, useRef, useCallback, useMemo 
 import { DfrHeader } from './DfrHeader';
 import PhotoEntry from './PhotoEntry';
 import type { DfrHeaderData, DfrStandardBodyData, PhotoData, ActivityBlock, LocationActivity, TextHighlight, TextComment } from '../types';
-import { PlusIcon, DownloadIcon, SaveIcon, FolderOpenIcon, ArrowLeftIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, CloseIcon, FolderArrowDownIcon, ChatBubbleLeftIcon, ZoomInIcon, ZoomOutIcon } from './icons';
+import { PlusIcon, DownloadIcon, SaveIcon, FolderOpenIcon, ArrowLeftIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, CloseIcon, FolderArrowDownIcon, ChatBubbleLeftIcon, ZoomInIcon, ZoomOutIcon, ChevronDownIcon } from './icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { AppType } from '../App';
 import { storeImage, retrieveImage, deleteImage, storeProject, deleteProject, deleteThumbnail, storeThumbnail, retrieveProject } from './db';
 import { generateProjectThumbnail } from './thumbnailUtils';
+import { safeSet } from './safeStorage';
 import { SpecialCharacterPalette } from './SpecialCharacterPalette';
 import BulletPointEditor from './BulletPointEditor';
 import ImageModal from './ImageModal';
@@ -17,6 +18,8 @@ import { CommentAnchorPosition } from './BulletPointEditor';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
 import SafeImage, { getAssetUrl } from './SafeImage';
+import { toast } from './Toast';
+import { perfMark, perfMeasure } from './perf';
 
 const dfrPlaceholders = {
     header: {
@@ -156,11 +159,7 @@ const addRecentProject = async (
         }
     }
 
-    try {
-        localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(updatedProjects));
-    } catch (e) {
-        console.error('Failed to save recent projects to localStorage:', e);
-    }
+    safeSet(RECENT_PROJECTS_KEY, JSON.stringify(updatedProjects));
 };
 
 // --- End Utility ---
@@ -276,8 +275,8 @@ const PdfPreviewModal: React.FC<{ url: string; filename: string; onClose: () => 
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-[100] p-4" role="dialog" aria-modal="true">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-full flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center z-[100] p-4" role="dialog" aria-modal="true">
+            <div className="xtec-modal-enter bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-full flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center p-4 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
                     <h3 className="text-xl font-bold text-gray-800 dark:text-white">PDF Preview</h3>
                     <div className="flex items-center gap-4">
@@ -291,19 +290,7 @@ const PdfPreviewModal: React.FC<{ url: string; filename: string; onClose: () => 
                     </div>
                 </div>
                 <div className="flex-grow bg-gray-200 dark:bg-gray-900 relative">
-                    <object data={url} type="application/pdf" className="w-full h-full">
-                        <div className="flex flex-col items-center justify-center h-full bg-gray-100 p-8 text-center text-gray-700">
-                            <p className="mb-4 text-lg font-semibold">It appears your browser cannot preview PDFs directly.</p>
-                            <p className="mb-6">You can download the file to view it instead.</p>
-                            <button
-                                onClick={handleDownload}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
-                            >
-                                <DownloadIcon />
-                                <span>Download PDF</span>
-                            </button>
-                        </div>
-                    </object>
+                    <iframe src={url} className="w-full h-full" style={{ border: 'none' }} title="PDF Preview" />
                 </div>
             </div>
         </div>
@@ -313,6 +300,7 @@ const PdfPreviewModal: React.FC<{ url: string; filename: string; onClose: () => 
 
 interface DfrStandardProps {
   onBack: () => void;
+  onBackDirect?: () => void;
   initialData?: any;
 }
 
@@ -467,7 +455,7 @@ const LocationBlockEntry: React.FC<{
 };
 
 
-const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement => {
+const DfrStandard = ({ onBack, onBackDirect, initialData }: DfrStandardProps): ReactElement => {
     // ... rest of the component is unchanged, but ensuring `jsPDF` works via import
     const [headerData, setHeaderData] = useState<DfrHeaderData>({
         proponent: '',
@@ -506,6 +494,17 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
     const [zoomLevel, setZoomLevel] = useState(100);
     const [isDirty, setIsDirty] = useState(false);
     const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+    const AUTOSAVE_KEY = 'xtec_autosave_enabled';
+    const AUTOSAVE_INTERVAL_KEY = 'xtec_autosave_interval';
+    const [autosaveEnabled, setAutosaveEnabled] = useState(() => localStorage.getItem(AUTOSAVE_KEY) !== 'false');
+    const [autosaveIntervalMs, setAutosaveIntervalMs] = useState(() => parseInt(localStorage.getItem(AUTOSAVE_INTERVAL_KEY) || '30') * 1000);
+    const [showSaveAsMenu, setShowSaveAsMenu] = useState(false);
+    const saveAsMenuRef = useRef<HTMLDivElement>(null);
+    const quickSaveRef = useRef<() => Promise<void>>();
+    const isDirtyRef = useRef(isDirty);
+    isDirtyRef.current = isDirty;
+    const autosaveEnabledRef = useRef(autosaveEnabled);
+    autosaveEnabledRef.current = autosaveEnabled;
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isDownloadingRef = useRef(false);
 
@@ -521,6 +520,7 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
     // Handler to collect anchor positions from BulletPointEditor instances
     const handleAnchorPositionsChange = useCallback((fieldId: string, anchors: CommentAnchorPosition[]) => {
         setCommentAnchors(prev => {
+            // Build the updated map
             const newMap = new Map(prev);
             // Remove old anchors for this field
             for (const key of newMap.keys()) {
@@ -539,6 +539,18 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
                     height: anchor.height,
                 });
             });
+            // Bail out (return same reference) if nothing changed — prevents re-render loop
+            if (newMap.size === prev.size) {
+                let changed = false;
+                for (const [k, v] of newMap) {
+                    const p = prev.get(k);
+                    if (!p || p.top !== v.top || p.left !== v.left || p.height !== v.height) {
+                        changed = true;
+                        break;
+                    }
+                }
+                if (!changed) return prev;
+            }
             return newMap;
         });
     }, []);
@@ -556,8 +568,11 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
         bodyData.locationActivities.forEach(loc => {
             labels[`locationActivity_${loc.id}`] = `Location: ${loc.location || 'Untitled'}`;
         });
+        photosData.forEach(p => {
+            labels[`photo-${p.id}-description`] = `Photo ${p.photoNumber}`;
+        });
         return labels;
-    }, [bodyData.locationActivities]);
+    }, [bodyData.locationActivities, photosData]);
 
     // Helper: check if a fieldId belongs to a location activity
     const getLocationActivityId = (fieldId: string): number | null => {
@@ -565,8 +580,19 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
         return match ? parseInt(match[1], 10) : null;
     };
 
-    // Helper: get comments array for a fieldId (body field or location activity)
+    // Helper: check if a fieldId belongs to a photo description
+    const getPhotoIdFromFieldId = (fieldId: string): number | null => {
+        const match = fieldId.match(/^photo-(\d+)-description$/);
+        return match ? parseInt(match[1], 10) : null;
+    };
+
+    // Helper: get comments array for a fieldId (body field, location activity, or photo)
     const getFieldComments = (fieldId: string): TextComment[] | undefined => {
+        const photoId = getPhotoIdFromFieldId(fieldId);
+        if (photoId !== null) {
+            const photo = photosData.find(p => p.id === photoId);
+            return photo?.inlineComments;
+        }
         const locId = getLocationActivityId(fieldId);
         if (locId !== null) {
             const loc = bodyData.locationActivities.find(l => l.id === locId);
@@ -575,8 +601,16 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
         return bodyData.inlineComments?.[fieldId as keyof typeof bodyData.inlineComments];
     };
 
-    // Helper: update comments for a fieldId (body field or location activity)
+    // Helper: update comments for a fieldId (body field, location activity, or photo)
     const setFieldComments = (fieldId: string, updater: (comments: TextComment[]) => TextComment[]) => {
+        const photoId = getPhotoIdFromFieldId(fieldId);
+        if (photoId !== null) {
+            setPhotosData(prev => prev.map(p =>
+                p.id === photoId ? { ...p, inlineComments: updater(p.inlineComments || []) } : p
+            ));
+            setIsDirty(true);
+            return;
+        }
         const locId = getLocationActivityId(fieldId);
         if (locId !== null) {
             setBodyData(prev => ({
@@ -598,6 +632,17 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
         }
         setIsDirty(true);
     };
+
+    // Photo comment/highlight change handlers
+    const handlePhotoCommentsChange = useCallback((photoId: number, comments: TextComment[]) => {
+        setPhotosData(prev => prev.map(p => p.id === photoId ? { ...p, inlineComments: comments } : p));
+        setIsDirty(true);
+    }, []);
+
+    const handlePhotoHighlightsChange = useCallback((photoId: number, highlights: TextHighlight[]) => {
+        setPhotosData(prev => prev.map(p => p.id === photoId ? { ...p, highlights } : p));
+        setIsDirty(true);
+    }, []);
 
     // Collect all comments from all fields into a single array
     const allComments: FieldComment[] = React.useMemo(() => {
@@ -636,8 +681,18 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
                 });
             }
         });
+        // Photo description fields
+        photosData.forEach(photo => {
+            if (photo.inlineComments && Array.isArray(photo.inlineComments) && photo.inlineComments.length > 0) {
+                const fid = `photo-${photo.id}-description`;
+                photo.inlineComments.forEach(comment => {
+                    if (!comment || !comment.id || typeof comment.start !== 'number' || typeof comment.end !== 'number') return;
+                    comments.push({ ...comment, fieldId: fid, fieldLabel: fieldLabels[fid] || `Photo ${photo.photoNumber}` });
+                });
+            }
+        });
         return comments;
-    }, [bodyData.inlineComments, bodyData.locationActivities, fieldLabels]);
+    }, [bodyData.inlineComments, bodyData.locationActivities, fieldLabels, photosData]);
 
     const hasAnyInlineComments = allComments.length > 0;
 
@@ -1146,30 +1201,29 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
         return { headerData, bodyData, photosData: photosForStorage };
     };
 
-    const handleSaveProject = async () => {
-        // First, save to the "Recent Projects" list, which uses IndexedDB for images
+    const handleQuickSave = async () => {
         const stateForRecentProjects = await prepareStateForRecentProjectStorage();
-        
         const formattedDate = formatDateForRecentProject(headerData.date);
         const dateSuffix = formattedDate ? ` - ${formattedDate}` : '';
         const projectName = `${headerData.projectName || 'Untitled DFR'}${dateSuffix}`;
-
         await addRecentProject(stateForRecentProjects, {
             type: 'dfrStandard',
             name: projectName,
             projectNumber: headerData.projectNumber,
         });
-        
-        // Second, prepare a self-contained state for file export with embedded images
+        setIsDirty(false);
+        toast('Saved ✓');
+    };
+    quickSaveRef.current = handleQuickSave;
+
+    const handleSaveProject = async () => {
+        await handleQuickSave();
         const photosForExport = photosData.map(({ imageId, ...photo }) => photo);
         const stateForFileExport = { headerData, bodyData, photosData: photosForExport };
-
         const sanitize = (name: string) => name.replace(/[^a-z0-9_]/gi, '-').toLowerCase();
         const formattedFilenameDate = formatDateForFilename(headerData.date);
         const sanitizedProjectName = sanitize(headerData.projectName);
         const filename = `${sanitizedProjectName || 'project'}_${formattedFilenameDate}.dfr`;
-        
-        // Save the self-contained state to a file
         // @ts-ignore
         if (window.electronAPI) {
             // @ts-ignore
@@ -1184,7 +1238,6 @@ const DfrStandard = ({ onBack, initialData }: DfrStandardProps): ReactElement =>
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         }
-        setIsDirty(false);
     };
 
     const handleDownloadPhotos = useCallback(async () => {
@@ -1293,26 +1346,56 @@ Description: ${photo.description || 'N/A'}
         };
     }, [stableListener]); // stableListener is memoized, so this effect runs once on mount/unmount.
 
+    useEffect(() => {
+        const name = headerData.projectName || '';
+        const num = headerData.projectNumber || '';
+        const prefix = [num, name].filter(Boolean).join(' – ');
+        document.title = prefix ? `${prefix} | X-TEC` : 'X-TEC Digital Reporting';
+        return () => { document.title = 'X-TEC Digital Reporting'; };
+    }, [headerData.projectName, headerData.projectNumber]);
+
     // Keyboard shortcut listeners
     useEffect(() => {
         const api = window.electronAPI;
+        if (api?.onQuickSaveShortcut) {
+            api.removeQuickSaveShortcutListener?.();
+            api.onQuickSaveShortcut(() => { quickSaveRef.current?.(); });
+        }
         if (api?.onSaveProjectShortcut) {
             api.removeSaveProjectShortcutListener?.();
-            api.onSaveProjectShortcut(() => {
-                handleSaveProject();
-            });
+            api.onSaveProjectShortcut(() => { handleSaveProject(); });
         }
         if (api?.onExportPdfShortcut) {
             api.removeExportPdfShortcutListener?.();
-            api.onExportPdfShortcut(() => {
-                handleSavePdf();
-            });
+            api.onExportPdfShortcut(() => { handleSavePdf(); });
         }
         return () => {
+            api?.removeQuickSaveShortcutListener?.();
             api?.removeSaveProjectShortcutListener?.();
             api?.removeExportPdfShortcutListener?.();
         };
     }, [headerData, bodyData, photosData]);
+
+    // Autosave at configured interval when dirty
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (isDirtyRef.current && autosaveEnabledRef.current) {
+                quickSaveRef.current?.();
+            }
+        }, autosaveIntervalMs);
+        return () => clearInterval(interval);
+    }, [autosaveIntervalMs]);
+
+    useEffect(() => {
+        if (!showSaveAsMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (saveAsMenuRef.current && !saveAsMenuRef.current.contains(e.target as Node)) {
+                setShowSaveAsMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showSaveAsMenu]);
 
     const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -1434,6 +1517,7 @@ Description: ${photo.description || 'N/A'}
             projectNumber: headerData.projectNumber
         });
 
+        perfMark('pdf-gen-start');
         const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'letter' });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -2023,6 +2107,8 @@ Description: ${photo.description || 'N/A'}
             doc.text(`Page ${i} of ${totalPages}`, pageWidth - borderMargin, footerTextY, { align: 'right' });
         }
         
+        perfMark('pdf-gen-end');
+        perfMeasure('PDF generation (DfrStandard)', 'pdf-gen-start', 'pdf-gen-end');
         const pdfBlob = doc.output('blob');
         const pdfUrl = URL.createObjectURL(pdfBlob);
         setPdfPreview({ url: pdfUrl, filename, blob: pdfBlob });
@@ -2091,32 +2177,58 @@ Description: ${photo.description || 'N/A'}
                 )}
                 <div className="sticky top-0 z-40 bg-gray-100 dark:bg-gray-900 py-2 mb-4 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex flex-wrap justify-between items-center gap-2">
-                        <button onClick={handleBack} className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+                        <button onClick={handleBack} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                             <ArrowLeftIcon /> <span>Home</span>
                         </button>
-                        <div className="flex flex-wrap justify-end gap-2">
-                            <button onClick={handleOpenProject} className="bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Autosave</span>
+                                <button
+                                    onClick={() => { const v = !autosaveEnabled; setAutosaveEnabled(v); localStorage.setItem(AUTOSAVE_KEY, String(v)); }}
+                                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${autosaveEnabled ? 'bg-[#007D8C]' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                    title={autosaveEnabled ? 'Autosave on — click to disable' : 'Autosave off — click to enable'}
+                                >
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${autosaveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </button>
+                            </div>
+                            <button onClick={handleQuickSave} title="Save (Ctrl+S)" className="bg-[#007D8C] hover:bg-[#006b7a] text-white font-semibold py-2 px-3 rounded-lg inline-flex items-center transition duration-200">
+                                <SaveIcon />
+                            </button>
+                            <button onClick={handleOpenProject} className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                                 <FolderOpenIcon /> <span>Open Project</span>
                             </button>
-                             <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileSelected}
-                                style={{ display: 'none' }}
-                                accept=".dfr"
-                            />
-                            <button onClick={handleSaveProject} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                                <SaveIcon /> <span>Save Project</span>
-                            </button>
+                            <input type="file" ref={fileInputRef} onChange={handleFileSelected} style={{ display: 'none' }} accept=".dfr" />
+                            <div className="relative" ref={saveAsMenuRef}>
+                                <button
+                                    onClick={() => setShowSaveAsMenu(v => !v)}
+                                    className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
+                                >
+                                    <span>Save As...</span>
+                                    <ChevronDownIcon className="h-4 w-4" />
+                                </button>
+                                {showSaveAsMenu && (
+                                    <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+                                        <button
+                                            onClick={() => { setShowSaveAsMenu(false); handleSaveProject(); }}
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                        >
+                                            <SaveIcon className="h-4 w-4 flex-shrink-0" /> Project File
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowSaveAsMenu(false); handleSavePdf(); }}
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                        >
+                                            <DownloadIcon className="h-4 w-4 flex-shrink-0" /> PDF
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             {/* @ts-ignore */}
                             {!window.electronAPI && (
-                                <button onClick={handleDownloadPhotos} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+                                <button onClick={handleDownloadPhotos} className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                                     <FolderArrowDownIcon /> <span>Download Photos</span>
                                 </button>
                             )}
-                            <button onClick={handleSavePdf} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                                <DownloadIcon /> <span>Save to PDF</span>
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -2260,6 +2372,12 @@ Description: ${photo.description || 'N/A'}
                                 headerDate={headerData.date}
                                 headerLocation={headerData.location}
                                 onAutoFill={(f, val) => handlePhotoDataChange(photo.id, f, val)}
+                                inlineComments={photo.inlineComments}
+                                onInlineCommentsChange={(comments) => handlePhotoCommentsChange(photo.id, comments)}
+                                highlights={photo.highlights}
+                                onHighlightsChange={(highlights) => handlePhotoHighlightsChange(photo.id, highlights)}
+                                onAnchorPositionsChange={(anchors) => handleAnchorPositionsChange(`photo-${photo.id}-description`, anchors)}
+                                hoveredCommentId={hoveredCommentId}
                             />
                                 {index < photosData.length - 1 && (
                                      <div className="relative my-6 flex items-center justify-center">
@@ -2416,7 +2534,7 @@ Description: ${photo.description || 'N/A'}
                                         // @ts-ignore
                                         window.electronAPI?.confirmClose();
                                     } else {
-                                        onBack();
+                                        (onBackDirect ?? onBack)();
                                     }
                                 }}
                                 className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition"

@@ -1,7 +1,7 @@
 import React from 'react';
 import { CloseIcon } from './icons';
 
-const APP_VERSION = '1.1.4-beta';
+const APP_VERSION = '1.1.4';
 const LAST_SEEN_VERSION_KEY = 'xtec_last_seen_version';
 
 interface ReleaseNote {
@@ -12,30 +12,17 @@ interface ReleaseNote {
 
 const RELEASE_NOTES: ReleaseNote[] = [
     {
-        version: '1.1.4-beta',
-        date: 'February 17, 2026',
-        highlights: [
-            'Six theme options — Light, Dark, Grey, Sepia (Warm), Blue (Cool), and High Contrast',
-            'Preset wallpapers for the landing page background — choose from 10 built-in photos',
-            'Custom landing page background with drag-to-crop and zoom controls',
-            'Default values for Proponent and Monitor Name auto-fill new reports',
-            'Spell check language selection with 12 language options',
-            '"What\'s New" popup on first launch after an update',
-            'Updated Help SOP with documentation for all new features',
-        ],
-    },
-    {
         version: '1.1.4',
-        date: 'November 15, 2025',
+        date: 'February 2026',
         highlights: [
-            'Inline comments — select text to add anchored comments with replies and resolution',
+            'Preset wallpapers — choose a background photo for the landing page from the Settings menu',
+            'Inline comments — select any text in a report to add anchored comments, replies, and resolutions',
+            'Unsaved changes warning — you will now be prompted before leaving a report with unsaved work',
+            'Auto-save — reports are automatically saved to Recent Projects at a configurable interval (Settings → Auto-Save)',
+            'Spell check with 12 language options including French, Spanish, German, and more',
             'Text highlighting with 5 colors (Yellow, Green, Blue, Pink, Orange)',
             'Drag-to-reorder photos using grip handles',
-            'Project thumbnail previews on hover in Recent Projects',
-            'Auto-fill photo Date and Location from report header fields',
-            'Combined Log report type for merging photos from multiple projects',
-            'Special character palette with Greek letters and math symbols',
-            'Full-screen image viewer with file metadata',
+            'Various bug fixes and performance improvements',
         ],
     },
 ];
@@ -69,13 +56,12 @@ const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ onClose }) => {
         onClose();
     };
 
-    // Only show notes for the current version
     const currentRelease = RELEASE_NOTES.find(r => r.version === APP_VERSION);
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleClose}>
             <div
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col overflow-hidden"
+                className="xtec-modal-enter bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -96,6 +82,16 @@ const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ onClose }) => {
 
                 {/* Content */}
                 <div className="px-6 py-4 overflow-y-auto flex-1">
+
+                    {/* Photo contest notification */}
+                    <div className="mb-5 rounded-xl bg-[#007D8C]/10 border border-[#007D8C]/30 px-4 py-3">
+                        <p className="text-sm font-semibold text-[#007D8C] dark:text-[#00bcd4]">📸 Coming This Field Season</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                            A photo contest is coming — each month's winning field photos will be featured directly in the app. Stay tuned!
+                        </p>
+                    </div>
+
+                    {/* Feature list */}
                     {currentRelease ? (
                         <ul className="space-y-2">
                             {currentRelease.highlights.map((item, i) => (

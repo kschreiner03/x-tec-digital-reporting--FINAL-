@@ -1,7 +1,7 @@
 {
   "name": "x-tes-digital-reporting-web",
   "productName": "X-TES Digital Reporting",
-  "version": "1.1.4-beta",
+  "version": "1.1.4",
   "description": "A comprehensive web application for creating and managing Daily Field Reports and Photographic Logs for environmental projects.",
   "main": ".vite/build/main.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "start": "electron-forge start",
     "build": "tsc && vite build",
     "make": "electron-forge make",
+    "make:nisis": "cross-env NISIS_BUILD=true electron-forge package && electron-builder --prepackaged \"out/NISIS Digital Reporting-win32-x64\" --config electron-builder.nisis.json",
     "make:mac": "electron-forge make --platform=darwin",
     "publish": "electron-forge publish"
   },
@@ -25,17 +26,19 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "exifr": "^7.1.3",
     "idb": "^8.0.0",
-    "image-clipper": "^0.4.4",
-    "jspdf": "^4.0.0",
+    "jspdf": "^4.2.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.563.0",
     "pdfjs-dist": "^5.4.449",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
+  "overrides": {
+    "dompurify": "^3.3.2"
+  },
   "devDependencies": {
+    "@electron-addons/electron-forge-maker-nsis": "^7.0.2",
     "@electron-forge/cli": "^7.4.0",
     "@electron-forge/maker-deb": "^7.4.0",
     "@electron-forge/maker-dmg": "^7.4.0",
@@ -48,8 +51,10 @@
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
-    "baseline-browser-mapping": "^2.9.18",
+    "cross-env": "^10.1.0",
     "electron": "^40.0.0",
+    "electron-builder": "^26.8.1",
+    "jimp": "^1.6.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.2.2",

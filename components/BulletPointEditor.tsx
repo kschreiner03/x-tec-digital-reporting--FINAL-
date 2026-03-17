@@ -26,6 +26,54 @@ const getCurrentUsername = () => {
     return 'User';
 };
 
+// Adjust highlight/comment ranges after a text edit so they track the correct characters.
+// Ranges that fall entirely within deleted text are removed; ranges before/after the
+// change are shifted; ranges that overlap the change boundary are clamped.
+function adjustRangesForEdit<T extends { start: number; end: number }>(
+    oldValue: string,
+    newValue: string,
+    ranges: T[]
+): T[] {
+    if (ranges.length === 0) return ranges;
+
+    // Find the bounds of the changed region by comparing old and new from both ends
+    let changeStart = 0;
+    while (changeStart < oldValue.length && changeStart < newValue.length &&
+           oldValue[changeStart] === newValue[changeStart]) {
+        changeStart++;
+    }
+    let oldEnd = oldValue.length;
+    let newEnd = newValue.length;
+    while (oldEnd > changeStart && newEnd > changeStart &&
+           oldValue[oldEnd - 1] === newValue[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+    }
+
+    const deletedLength = oldEnd - changeStart;
+    const insertedLength = newEnd - changeStart;
+
+    return ranges.reduce<T[]>((acc, range) => {
+        const { start, end } = range;
+        if (end <= changeStart) {
+            // Entirely before change — unchanged
+            acc.push(range);
+        } else if (start >= oldEnd) {
+            // Entirely after change — shift by net delta
+            acc.push({ ...range, start: start - deletedLength + insertedLength, end: end - deletedLength + insertedLength });
+        } else {
+            // Overlaps the changed region — clamp to what survives
+            const newStart = start < changeStart ? start : changeStart + insertedLength;
+            const newRangeEnd = end > oldEnd ? end - deletedLength + insertedLength : changeStart + insertedLength;
+            if (newRangeEnd > newStart) {
+                acc.push({ ...range, start: newStart, end: newRangeEnd });
+            }
+            // Range was entirely inside deleted text — drop it
+        }
+        return acc;
+    }, []);
+}
+
 // Add animations
 const animationStyle = `
   @keyframes spinIn {
@@ -66,6 +114,10 @@ if (typeof document !== 'undefined' && !document.getElementById('bullet-point-ed
   document.head.appendChild(styleSheet);
 }
 
+// Stable empty array — used as default for inlineComments prop to prevent
+// a new array reference on every render (which would cause an infinite effect loop).
+const EMPTY_COMMENTS: TextComment[] = [];
+
 // Anchor position for comment alignment
 export interface CommentAnchorPosition {
     fieldId: string;
@@ -94,7 +146,7 @@ interface BulletPointEditorProps {
 const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
     label, fieldId, value, onChange, placeholder, rows = 3, isInvalid = false,
     highlights = [], onHighlightsChange,
-    inlineComments = [], onInlineCommentsChange,
+    inlineComments = EMPTY_COMMENTS, onInlineCommentsChange,
     onAnchorPositionsChange,
     hoveredCommentId
 }) => {
@@ -102,6 +154,10 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const underlineRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
     const commentInputRef = useRef<HTMLInputElement>(null);
+    // Stable ref for the anchor callback — avoids including an inline arrow function
+    // in the effect dependency array, which would cause an infinite re-render loop.
+    const onAnchorPositionsChangeRef = useRef(onAnchorPositionsChange);
+    useEffect(() => { onAnchorPositionsChangeRef.current = onAnchorPositionsChange; });
     const [selection, setSelection] = useState({ start: 0, end: 0 });
     const [newCommentText, setNewCommentText] = useState('');
     const [currentUsername] = useState(() => getCurrentUsername());
@@ -185,6 +241,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
             end: clampedEnd,
             text: text.trim(),
             author: currentUsername,
+            authorAvatar: localStorage.getItem('xtec_profile_picture') || undefined,
             timestamp: new Date(),
             resolved: false,
         };
@@ -212,6 +269,17 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
         }
     };
 
+    // Applies a text change and keeps highlight/comment positions in sync
+    const applyTextChange = (oldText: string, newText: string) => {
+        if (onHighlightsChange && highlights.length > 0) {
+            onHighlightsChange(adjustRangesForEdit(oldText, newText, highlights));
+        }
+        if (onInlineCommentsChange && inlineComments.length > 0) {
+            onInlineCommentsChange(adjustRangesForEdit(oldText, newText, inlineComments));
+        }
+        onChange(newText);
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         const textarea = e.currentTarget;
         const { selectionStart, selectionEnd, value: text } = textarea;
@@ -228,7 +296,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
             if (e.shiftKey) {
                 if (currentLine.startsWith('  ')) {
                     const newText = text.substring(0, lineStartIndex) + text.substring(lineStartIndex + 2);
-                    onChange(newText);
+                    applyTextChange(text, newText);
                     setTimeout(() => {
                         textarea.selectionStart = Math.max(lineStartIndex, selectionStart - 2);
                         textarea.selectionEnd = Math.max(lineStartIndex, selectionEnd - 2);
@@ -236,7 +304,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                 }
             } else {
                 const newText = text.substring(0, lineStartIndex) + '  ' + text.substring(lineStartIndex);
-                onChange(newText);
+                applyTextChange(text, newText);
                 setTimeout(() => {
                     textarea.selectionStart = selectionStart + 2;
                     textarea.selectionEnd = selectionEnd + 2;
@@ -253,14 +321,14 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                 if (currentIndent.length >= 2) {
                     const newIndent = currentIndent.substring(0, currentIndent.length - 2);
                     const newText = text.substring(0, lineStartIndex) + newIndent + '- ' + text.substring(lineEndIndex);
-                    onChange(newText);
+                    applyTextChange(text, newText);
                     setTimeout(() => {
                         const newCursorPos = lineStartIndex + newIndent.length + 2;
                         textarea.selectionStart = textarea.selectionEnd = newCursorPos;
                     }, 0);
                 } else {
                     const newText = text.substring(0, lineStartIndex) + text.substring(lineEndIndex);
-                    onChange(newText);
+                    applyTextChange(text, newText);
                     setTimeout(() => {
                         textarea.selectionStart = textarea.selectionEnd = lineStartIndex;
                     }, 0);
@@ -268,7 +336,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
             } else {
                 const newLine = '\n' + currentIndent + '- ';
                 const newText = text.substring(0, selectionStart) + newLine + text.substring(selectionEnd);
-                onChange(newText);
+                applyTextChange(text, newText);
                 setTimeout(() => {
                     textarea.selectionStart = textarea.selectionEnd = selectionStart + newLine.length;
                 }, 0);
@@ -342,9 +410,10 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
     // CRITICAL: Positions must be VIEWPORT-RELATIVE (getBoundingClientRect values)
     // NOT document-relative. This prevents drift during scroll.
     useEffect(() => {
-        if (!onAnchorPositionsChange || !fieldId) return;
+        if (!fieldId) return;
 
         const reportPositions = () => {
+            if (!onAnchorPositionsChangeRef.current) return;
             try {
                 const anchors: CommentAnchorPosition[] = [];
 
@@ -365,7 +434,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                     }
                 });
 
-                onAnchorPositionsChange(anchors);
+                onAnchorPositionsChangeRef.current(anchors);
             } catch (error) {
                 console.error('Error reporting anchor positions:', error);
             }
@@ -397,7 +466,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
             resizeObserver.disconnect();
             if (rafId) cancelAnimationFrame(rafId);
         };
-    }, [fieldId, inlineComments, onAnchorPositionsChange]);
+    }, [fieldId, inlineComments]); // onAnchorPositionsChange accessed via ref to prevent infinite loop
 
     const applyHighlight = (color: string) => {
         if (selection.start !== selection.end && onHighlightsChange) {
@@ -411,6 +480,15 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
         }
     };
 
+    const removeHighlightsInSelection = () => {
+        if (selection.start !== selection.end && onHighlightsChange) {
+            const updated = highlights.filter(
+                h => !(h.start < selection.end && h.end > selection.start)
+            );
+            onHighlightsChange(updated);
+        }
+    };
+
     const buildHighlightedContent = () => {
         if (!highlights || highlights.length === 0) {
             return [{ text: value, highlight: null }];
@@ -421,10 +499,12 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
         const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start);
 
         sortedHighlights.forEach((h) => {
-            if (h.start > lastIndex) {
-                segments.push({ text: value.substring(lastIndex, h.start), highlight: null });
+            const segStart = Math.max(h.start, lastIndex);
+            if (segStart >= h.end) return; // fully inside a previous highlight, skip
+            if (segStart > lastIndex) {
+                segments.push({ text: value.substring(lastIndex, segStart), highlight: null });
             }
-            segments.push({ text: value.substring(h.start, h.end), highlight: h.color });
+            segments.push({ text: value.substring(segStart, h.end), highlight: h.color });
             lastIndex = h.end;
         });
 
@@ -532,7 +612,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                                         Highlight
                                     </div>
                                     {selection.start !== selection.end ? (
-                                        <div className="px-2 py-1 flex gap-1">
+                                        <div className="px-2 py-1 flex gap-1 items-center">
                                             {colors.map((color) => (
                                                 <button
                                                     key={color.hex}
@@ -547,6 +627,18 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                                                     style={{ backgroundColor: color.hex }}
                                                 />
                                             ))}
+                                            <button
+                                                type="button"
+                                                onMouseDown={(e) => e.preventDefault()}
+                                                onClick={() => {
+                                                    removeHighlightsInSelection();
+                                                    setShowMenu(false);
+                                                }}
+                                                title="Remove highlight"
+                                                className="w-5 h-5 rounded border border-gray-300 dark:border-gray-500 hover:scale-110 transition-transform flex items-center justify-center bg-white dark:bg-gray-700 text-gray-400 dark:text-gray-400 text-xs leading-none"
+                                            >
+                                                ✕
+                                            </button>
                                         </div>
                                     ) : (
                                         <div className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 italic">
@@ -697,7 +789,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                                             key={idx}
                                             style={{
                                                 backgroundColor: segment.highlight,
-                                                opacity: 0.4,
+                                                opacity: darkMode ? 0.75 : 0.4,
                                                 borderRadius: '2px',
                                             }}
                                         >
@@ -812,7 +904,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                             ref={textareaRef}
                             value={value}
                             onChange={(e) => {
-                                onChange(e.target.value);
+                                applyTextChange(value, e.target.value);
                                 adjustHeight();
                             }}
                             onFocus={handleFocus}
@@ -820,7 +912,7 @@ const BulletPointEditor: React.FC<BulletPointEditorProps> = ({
                             onMouseUp={handleSelectionChange}
                             onKeyUp={handleSelectionChange}
                             placeholder={placeholder}
-                            className={`block w-full p-2 border rounded-md shadow-sm focus:ring-2 focus:ring-[#007D8C] focus:border-[#007D8C] transition-all text-black dark:text-white dark:placeholder-gray-400 bg-white dark:bg-gray-700 relative z-10 resize-none ${
+                            className={`block w-full p-2 border rounded-md shadow-sm focus:ring-2 focus:ring-[#007D8C] focus:border-[#007D8C] transition-all text-black dark:text-white dark:placeholder-gray-400 relative z-10 resize-none ${
                                 isInvalid ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600'
                             }`}
                             spellCheck={true}

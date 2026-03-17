@@ -1,6 +1,1 @@
-"use strict";
-const { contextBridge, ipcRenderer } = require("electron");
-contextBridge.exposeInMainWorld("helpAPI", {
-  openPdf: (filename) => ipcRenderer.invoke("open-pdf", filename),
-  getAssetPath: (filename) => ipcRenderer.invoke("get-asset-path", filename)
-});
+"use strict";const{contextBridge:n,ipcRenderer:t}=require("electron");n.exposeInMainWorld("helpAPI",{openPdf:e=>t.invoke("open-pdf",e),getAssetPath:e=>t.invoke("get-asset-path",e)});

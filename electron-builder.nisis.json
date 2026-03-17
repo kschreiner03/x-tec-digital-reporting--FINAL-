@@ -1,0 +1,22 @@
+{
+  "appId": "com.xterra.nisis-digital-reporting",
+  "productName": "NISIS Digital Reporting",
+  "executableName": "NISIS Digital Reporting",
+  "directories": {
+    "output": "out/nisis-installer",
+    "buildResources": "build"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "NISIS Digital Reporting",
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico"
+  },
+  "win": {
+    "icon": "assets/icon.ico",
+    "target": "nsis"
+  }
+}

@@ -1,4 +1,5 @@
 import { openDB } from 'idb';
+import { perfTime } from './perf';
 
 let dbPromise: Promise<any> | null = null;
 
@@ -37,7 +38,7 @@ const initDB = () => {
  */
 export const storeImage = async (id: string, imageData: string): Promise<void> => {
   const db = await initDB();
-  await db.put(IMAGE_STORE_NAME, imageData, id);
+  await perfTime('DB storeImage', () => db.put(IMAGE_STORE_NAME, imageData, id));
 };
 
 /**
@@ -47,7 +48,7 @@ export const storeImage = async (id: string, imageData: string): Promise<void> =
  */
 export const retrieveImage = async (id: string): Promise<string | undefined> => {
   const db = await initDB();
-  return db.get(IMAGE_STORE_NAME, id);
+  return perfTime('DB retrieveImage', () => db.get(IMAGE_STORE_NAME, id));
 };
 
 /**
@@ -66,7 +67,7 @@ export const deleteImage = async (id: string): Promise<void> => {
  */
 export const storeProject = async (id: number, projectData: object): Promise<void> => {
   const db = await initDB();
-  await db.put(PROJECT_STORE_NAME, projectData, id);
+  await perfTime('DB storeProject', () => db.put(PROJECT_STORE_NAME, projectData, id));
 };
 
 /**
@@ -76,7 +77,7 @@ export const storeProject = async (id: number, projectData: object): Promise<voi
  */
 export const retrieveProject = async (id: number): Promise<any | undefined> => {
   const db = await initDB();
-  return db.get(PROJECT_STORE_NAME, id);
+  return perfTime('DB retrieveProject', () => db.get(PROJECT_STORE_NAME, id));
 };
 
 /**

@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("save-project-shortcut", () => callback());
   },
 
+  onQuickSaveShortcut: (callback) => {
+    ipcRenderer.on("quick-save-shortcut", () => callback());
+  },
+
   onExportPdfShortcut: (callback) => {
     ipcRenderer.on("export-pdf-shortcut", () => callback());
   },
@@ -93,6 +97,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   removeSaveProjectShortcutListener: () => {
     ipcRenderer.removeAllListeners("save-project-shortcut");
+  },
+
+  removeQuickSaveShortcutListener: () => {
+    ipcRenderer.removeAllListeners("quick-save-shortcut");
   },
 
   removeExportPdfShortcutListener: () => {

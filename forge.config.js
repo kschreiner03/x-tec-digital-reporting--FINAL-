@@ -1,10 +1,13 @@
+const isNisis = process.env.NISIS_BUILD === 'true';
+
 module.exports = {
   packagerConfig: {
     asar: true,
+    name: isNisis ? 'NISIS Digital Reporting' : 'X-TES Digital Reporting',
     icon: 'assets/icon.ico',
-    executableName: 'X-TES Digital Reporting',
+    executableName: isNisis ? 'NISIS Digital Reporting' : 'X-TES Digital Reporting',
     extraResource: [
-      'assets'
+      'assets',
     ],
     fileAssociations: [
       {
@@ -30,20 +33,29 @@ module.exports = {
     ]
   },
   rebuildConfig: {},
-  makers: [
-    {
-      name: '@electron-forge/maker-squirrel',
-      config: {
-        // The name of the application, derived from `productName` in package.json
-        name: 'x-tec-digital-reporting-web',
-        // The name of the main executable
-        exe: 'X-TES Digital Reporting.exe',
-        // Path to the .ico file for the installer and shortcuts
-        setupIcon: 'assets/icon.ico',
-        createDesktopShortcut: true
-      },
-    }
-  ],
+  makers: isNisis
+    ? [
+        {
+          name: '@electron-addons/electron-forge-maker-nsis',
+          config: {
+            icon: 'assets/icon.ico',
+            createDesktopShortcut: true,
+            createStartMenuShortcut: true,
+          },
+        },
+      ]
+    : [
+        {
+          name: '@electron-forge/maker-squirrel',
+          config: {
+            name: 'x-tec-digital-reporting-web',
+            exe: 'X-TES Digital Reporting.exe',
+            setupIcon: 'assets/icon.ico',
+            loadingGif: 'assets/install-loading.gif',
+            createDesktopShortcut: true,
+          },
+        },
+      ],
   publishers: [
     {
       name: '@electron-forge/publisher-electron-release-server',

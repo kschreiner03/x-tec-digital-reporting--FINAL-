@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import type { PhotoData } from '../types';
+import type { PhotoData, TextComment, TextHighlight } from '../types';
 import { TrashIcon, CameraIcon, ArrowsPointingOutIcon, GripVerticalIcon } from './icons';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import BulletPointEditor, { CommentAnchorPosition } from './BulletPointEditor';
 
 interface PhotoEntryProps {
   data: PhotoData;
@@ -18,6 +19,13 @@ interface PhotoEntryProps {
   headerDate?: string;
   headerLocation?: string;
   onAutoFill?: (field: "date" | "location", value: string) => void;
+
+  inlineComments?: TextComment[];
+  onInlineCommentsChange?: (comments: TextComment[]) => void;
+  highlights?: TextHighlight[];
+  onHighlightsChange?: (highlights: TextHighlight[]) => void;
+  onAnchorPositionsChange?: (anchors: CommentAnchorPosition[]) => void;
+  hoveredCommentId?: string | null;
 }
 
 const EditableField: React.FC<{ 
@@ -98,7 +106,13 @@ const PhotoEntry: React.FC<PhotoEntryProps> = ({
   isLocationLocked = false,
   onImageClick,
   headerDate,
-  headerLocation
+  headerLocation,
+  inlineComments,
+  onInlineCommentsChange,
+  highlights,
+  onHighlightsChange,
+  onAnchorPositionsChange,
+  hoveredCommentId,
 }) => {
 
   const {
@@ -218,13 +232,29 @@ const PhotoEntry: React.FC<PhotoEntryProps> = ({
           </div>
 
           {/* Description */}
-          <EditableField
-            label="Description"
-            value={data.description}
-            onChange={(v) => onDataChange("description", v)}
-            isTextArea
-            printable={printable}
-          />
+          {printable ? (
+            <EditableField
+              label="Description"
+              value={data.description}
+              onChange={() => {}}
+              isTextArea
+              printable
+            />
+          ) : (
+            <BulletPointEditor
+              label="Description"
+              fieldId={`photo-${data.id}-description`}
+              value={data.description}
+              onChange={(v) => onDataChange("description", v)}
+              inlineComments={inlineComments}
+              onInlineCommentsChange={onInlineCommentsChange}
+              highlights={highlights}
+              onHighlightsChange={onHighlightsChange}
+              onAnchorPositionsChange={onAnchorPositionsChange}
+              hoveredCommentId={hoveredCommentId}
+              rows={4}
+            />
+          )}
 
         </div>
 

@@ -12,9 +12,14 @@ interface HeaderProps {
 const XterraLogo: React.FC<{ isPrintable?: boolean }> = ({ isPrintable = false }) => (
     <div className="flex items-center">
         <SafeImage
-            fileName="xterra-logo.jpg"
+            fileName="xterra-logo.png"
             alt="X-TERRA Logo"
-            className={isPrintable ? "h-10 w-auto" : "h-14 w-auto mix-blend-multiply dark:mix-blend-normal dark:bg-white dark:p-1 dark:rounded-sm"}
+            className={isPrintable ? "h-10 w-auto" : "h-14 w-auto dark:hidden"}
+        />
+        <SafeImage
+            fileName="xterra-white.png"
+            alt="X-TERRA Logo"
+            className={isPrintable ? "h-10 w-auto" : "h-14 w-auto hidden dark:block"}
         />
     </div>
 );

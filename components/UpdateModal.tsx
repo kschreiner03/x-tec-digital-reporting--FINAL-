@@ -10,13 +10,21 @@ interface UpdateModalProps {
 
 const UpdateModal: React.FC<UpdateModalProps> = ({ onClose, isDownloaded }) => {
     const [stage, setStage] = useState<UpdateStage>(isDownloaded ? 'ready' : 'available');
+    const stageRef = React.useRef(stage);
+    stageRef.current = stage;
 
     // When the download finishes while the modal is open, advance to 'ready'
+    // and auto-close after a short delay so the downloading animation goes away.
+    // stage is intentionally read via ref so the timer isn't cancelled by the stage change.
     useEffect(() => {
-        if (isDownloaded && (stage === 'available' || stage === 'downloading')) {
-            setStage('ready');
+        if (!isDownloaded) return;
+        const wasDownloading = stageRef.current === 'downloading';
+        setStage('ready');
+        if (wasDownloading) {
+            const timer = setTimeout(() => onClose(), 3000);
+            return () => clearTimeout(timer);
         }
-    }, [isDownloaded]);
+    }, [isDownloaded, onClose]);
 
     const handleDownloadNow = () => {
         if (isDownloaded) {
@@ -47,7 +55,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ onClose, isDownloaded }) => {
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden"
+                className="xtec-modal-enter bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}

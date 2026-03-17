@@ -154,6 +154,7 @@
         .example-button { display: block; width: 100%; text-align: left; background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 1rem; margin-bottom: 0.75rem; border-radius: 8px; font-size: 1.1rem; font-family: Arial, sans-serif; font-weight: bold; color: #1f2937; cursor: pointer; transition: all 0.2s ease-in-out; }
         .example-button:hover { background-color: #f3f4f6; border-color: #d1d5db; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .example-button .description { font-size: 0.9rem; color: #6b7280; font-family: 'Times New Roman', Times, serif; margin-top: 4px; font-weight: normal; }
+
     </style>
 </head>
 <body>
@@ -162,7 +163,7 @@
         <h1 class="procedure-title">X-TES Digital Reporting Application Procedure</h1>
 
         <div class="tabs">
-  
+
         </div>
 
         <div id="sop" class="tab-content active">
@@ -182,7 +183,7 @@
                     </tr>
                     <tr>
                         <td>Revision No</td>
-                        <td>1C</td>
+                        <td>1D</td>
                     </tr>
                     <tr>
                         <td>Document Review</td>
@@ -217,6 +218,11 @@
                         <td>1C</td>
                         <td>ADD NEW FEATURES: THEMES, SETTINGS, INLINE COMMENTS, HIGHLIGHTING, COMBINED LOG, DRAG-TO-REORDER, LANDING PAGE CUSTOMIZATION</td>
                         <td>FEBRUARY 17, 2026</td>
+                    </tr>
+                    <tr>
+                        <td>1D</td>
+                        <td>ADD AUTO-SAVE INTERVAL SETTINGS, VISUAL GUIDES FOR ALL FEATURES</td>
+                        <td>MARCH 2026</td>
                     </tr>
                 </tbody>
             </table>
@@ -253,7 +259,8 @@
                                     <li><a href="#settings-landing-bg">4.7.2&emsp;Landing Page Background</a></li>
                                     <li><a href="#settings-defaults">4.7.3&emsp;Default Values</a></li>
                                     <li><a href="#settings-spellcheck">4.7.4&emsp;Spell Check Languages</a></li>
-                                    <li><a href="#settings-data">4.7.5&emsp;Data Management</a></li>
+                                    <li><a href="#settings-autosave">4.7.5&emsp;Auto-Save</a></li>
+                                    <li><a href="#settings-data">4.7.6&emsp;Data Management</a></li>
                                 </ol>
                             </li>
                             <li><a href="#data-management">4.8&emsp;Saving, Exporting & Data Management</a></li>
@@ -274,13 +281,13 @@
                     <h1>2&emsp;SCOPE</h1>
                     <p>This procedure outlines the steps required to utilize the X-TES Digital Reporting Application to collect data and information. The details provided in this document are sufficient to train any X-Terra staff member to perform this task competently.</p>
                 </section>
-                
+
                 <section id="general-protocol">
                     <h1>3&emsp;GENERAL PROTOCOL</h1>
                     <p>The X-TES Digital Reporting Application is a desktop program that must be installed from the company server. Once installed, it allows users to create reports from templates. Data is entered into specific fields, and prepared photos are uploaded into the photographic log sections. The application saves work-in-progress as editable project files (with extensions <span class="filepath">.plog</span>, <span class="filepath">.dfr</span>, or <span class="filepath">.spdfr</span>).</p>
                     <p>It is critical to distinguish between saving a project file (for future editing) and generating a final PDF (for submission). All recent work is stored locally on the user's computer for quick access from the application's landing page. The most critical workflow component is the mandatory preparation of photos (cropping, resizing, and server archival) before they are used in a report, as this ensures quality and manageable file sizes.</p>
                 </section>
-                
+
                 <section id="detailed-procedures">
                     <h1>4&emsp;DETAILED PROCEDURES</h1>
 
@@ -308,7 +315,7 @@
                         </li>
                         <li><strong>Updating the Application:</strong> The process for updating is identical to the first-time installation. Simply repeat the steps above with the new files from the server. The installer will automatically overwrite the old version while preserving all your locally stored project data.</li>
                     </ol>
-                    
+
                     <h2 id="photo-prep">4.2&emsp;Photo Preparation (CRITICAL)</h2>
                      <div class="warning">
                         <strong>THIS IS THE SINGLE MOST IMPORTANT WORKFLOW.</strong> Failure to follow these steps results in inconsistent report quality, excessively large PDF files that cannot be emailed, and incorrect project archiving.
@@ -345,6 +352,7 @@
                         <li><strong>Settings:</strong> Click the gear icon on the landing page to open the Settings modal (see Section 4.7).</li>
                         <li><strong>Update Notifications:</strong> When a new version of the application is available, a banner will appear at the top of the landing page. The update will install automatically the next time the application is restarted.</li>
                     </ul>
+
                     <h3 id="ui-report-screen">4.3.2&emsp;The Report Creation Screen</h3>
                     <p>This is where you will do all your work.</p>
                     <ul>
@@ -360,14 +368,15 @@
                     <li><strong>Inline Comments:</strong> A collapsible comments panel on the right side of the screen allows you to add, reply to, and resolve comments on specific text fields. See Section 4.6 for details.</li>
                     <li><strong>Image Viewer:</strong> Click on any uploaded photo in a report to open a full-screen preview. Press <kbd>Esc</kbd> or click the close button to dismiss. The viewer displays file name, file size, and date taken (if available).</li>
                 </ul>
-                
+
+
                 <h2 id="report-creation">4.4&emsp;Report Creation & Data Entry</h2>
                 <div class="note">
                     <strong>CRITICAL DATE FORMAT:</strong> In all report headers, the date must be entered in the format <strong>Month Day, Year</strong> (e.g., <code>October 1, 2025</code>). Using other formats (e.g., <code>10/01/2025</code>) may cause errors when generating filenames or displaying dates.
                 </div>
                 <h3 id="report-photolog">4.4.1&emsp;Photographic Log</h3>
                 <p>The simplest report type. Fill out all header fields (Proponent, Location, Date, Project #, Project Name) and proceed to add photos as described in section 4.5.</p>
-                
+
                 <h3 id="report-dfr-standard">4.4.2&emsp;Standard Daily Field Report (DFR)</h3>
                 <p>A comprehensive report for most projects, combining detailed text sections with an integrated photographic log.</p>
                 <ol>
@@ -422,6 +431,7 @@
                     <li><strong>Auto-Fill Photo Fields:</strong> When the report header fields (Date, Location) are filled in, you can click the auto-fill buttons on individual photo entries to quickly populate the Date and Location fields from the header values.</li>
                 </ol>
 
+
                 <h2 id="inline-comments">4.6&emsp;Inline Comments & Text Highlighting</h2>
                 <p>The application includes collaboration tools for reviewing and annotating reports before final submission. These annotations are stored in the project file but are <strong>not</strong> exported to the final PDF.</p>
 
@@ -444,6 +454,7 @@
                 <div class="note">
                     <strong>Note:</strong> Both inline comments and text highlights are saved in your project file for collaborative review purposes. They are <strong>not</strong> included in the generated PDF output.
                 </div>
+
 
                 <h2 id="settings">4.7&emsp;Settings</h2>
                 <p>Click the gear icon on the landing page to open the Settings modal. Settings are organized into tabs and are saved locally on your computer.</p>
@@ -490,7 +501,16 @@
                     <strong>Note:</strong> Changes to spell check languages require an application restart to take effect.
                 </div>
 
-                <h3 id="settings-data">4.7.5&emsp;Data Management</h3>
+                <h3 id="settings-autosave">4.7.5&emsp;Auto-Save</h3>
+                <p>The Auto-Save section lets you configure how frequently the app saves your work to the Recent Projects list. Options range from 15 seconds to 5 minutes. Auto-save only updates the app's internal database &mdash; it does not overwrite files on your computer or server.</p>
+                <ul>
+                    <li><strong>Save Interval:</strong> Choose how often auto-save runs while you have unsaved changes. Available options are 15 seconds, 30 seconds (default), 1 minute, 2 minutes, and 5 minutes.</li>
+                </ul>
+                <div class="note">
+                    <strong>Note:</strong> Auto-save updates the Recent Projects list in the application's internal database only. It does not write to any file on disk. To save a file to your computer or server, always use the "Save Project" button.
+                </div>
+
+                <h3 id="settings-data">4.7.6&emsp;Data Management</h3>
                 <p>The Data Management tab in Settings allows you to:</p>
                 <ul>
                     <li><strong>View Storage Usage:</strong> See how much local storage space is being used by the application and the total available quota.</li>
@@ -500,6 +520,7 @@
                     <strong>Warning:</strong> Clearing local data will remove all entries from your Recent Projects list. Make sure your project files are saved to your computer or server before clearing.
                 </div>
 
+
                 <h2 id="data-management">4.8&emsp;Saving, Exporting & Data Management</h2>
                 <div class="warning">
                     <strong>THE GOLDEN RULE: "SAVE PROJECT" VS. "SAVE TO PDF".</strong> Understanding this distinction is essential to avoid data loss and rework.
@@ -507,6 +528,11 @@
                         <li><strong>Save Project:</strong> Creates a live, <strong>EDITABLE</strong> source file (<span class="filepath">.dfr</span>, <span class="filepath">.plog</span>, <span class="filepath">.spdfr</span>, or <span class="filepath">.clog</span>). This is your master copy for saving progress and making future edits. You can only open these files with this application.</li>
                         <li><strong>Save to PDF:</strong> Generates a final, <strong>NON-EDITABLE</strong> document for submission, printing, or sharing. It cannot be opened or edited by this application.</li>
                     </ul>
+                </div>
+
+
+                <div class="note">
+                    <strong>Note:</strong> The application also auto-saves your work to the Recent Projects list at a configurable interval (see Section 4.7.5). This is separate from manually saving a project file.
                 </div>
                 <ol>
                     <li><strong>Procedure: Saving a Project File:</strong> Click the "Save Project" button. A "Save As" dialog will appear. Choose a location on your computer to save the file. This action also automatically adds or updates the project in your "Recent Projects" list for quick access.</li>
@@ -531,7 +557,7 @@
                     </li>
                 </ol>
             </section>
-            
+
             <section id="formatting-tips">
                  <h1>5&emsp;FORMATTING TIPS</h1>
                  <p>Here are some formatting tips to assist with your final report.</p>
@@ -559,7 +585,7 @@
                     </tbody>
                 </table>
             </section>
-            
+
             <p style="text-align: center; margin-top: 3rem; font-style: italic;">&lt;PAGE LEFT BLANK INTENTIONALLY&gt;</p>
 
         </main>
@@ -601,7 +627,7 @@
                     const headerLogoPath = await window.helpAPI.getAssetPath('xterra-logo.jpg');
                     const imgHeader = document.getElementById('header-logo');
                     if (imgHeader) imgHeader.src = headerLogoPath;
-                    
+
                     const footerLogoPath = await window.helpAPI.getAssetPath('thunderchild-logo.jpg');
                     const imgFooter = document.getElementById('footer-logo');
                     if (imgFooter) imgFooter.src = footerLogoPath;

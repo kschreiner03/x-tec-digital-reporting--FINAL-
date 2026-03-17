@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Header from './Header';
 import PhotoEntry from './PhotoEntry';
 import type { HeaderData, PhotoData } from '../types';
-import { PlusIcon, DownloadIcon, SaveIcon, FolderOpenIcon, CloseIcon, ArrowLeftIcon, FolderArrowDownIcon, DocumentDuplicateIcon, ClipboardDocumentListIcon, TrashIcon } from './icons';
+import { PlusIcon, DownloadIcon, SaveIcon, FolderOpenIcon, CloseIcon, ArrowLeftIcon, FolderArrowDownIcon, DocumentDuplicateIcon, ClipboardDocumentListIcon, TrashIcon, ChevronDownIcon } from './icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { AppType } from '../App';
 import { storeImage, retrieveImage, deleteImage, storeProject, deleteProject, deleteThumbnail, storeThumbnail, retrieveProject } from './db';
 import { generateProjectThumbnail } from './thumbnailUtils';
+import { safeSet } from './safeStorage';
 import { SpecialCharacterPalette } from './SpecialCharacterPalette';
 import ImageModal from './ImageModal';
 import ActionStatusModal from './ActionStatusModal';
@@ -15,6 +16,8 @@ import { RecentProject } from './LandingPage';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
 import SafeImage, { getAssetUrl } from './SafeImage';
+import { toast } from './Toast';
+import { perfMark, perfMeasure } from './perf';
 
 // --- Recent Projects Utility ---
 const RECENT_PROJECTS_KEY = 'xtec_recent_projects';
@@ -110,11 +113,7 @@ const addRecentProject = async (
         }
     }
 
-    try {
-        localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(updatedProjects));
-    } catch (e) {
-        console.error('Failed to save recent projects to localStorage:', e);
-    }
+    safeSet(RECENT_PROJECTS_KEY, JSON.stringify(updatedProjects));
 
     return timestamp;
 };
@@ -241,19 +240,7 @@ const PdfPreviewModal: React.FC<{ url: string; filename: string; onClose: () => 
                     </div>
                 </div>
                 <div className="flex-grow bg-gray-200 dark:bg-gray-900 relative">
-                    <object data={url} type="application/pdf" className="w-full h-full">
-                        <div className="flex flex-col items-center justify-center h-full bg-gray-100 dark:bg-gray-800 p-8 text-center text-gray-700 dark:text-gray-300">
-                            <p className="mb-4 text-lg font-semibold">It appears your browser cannot preview PDFs directly.</p>
-                            <p className="mb-6">You can download the file to view it instead.</p>
-                            <button
-                                onClick={handleDownload}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
-                            >
-                                <DownloadIcon />
-                                <span>Download PDF</span>
-                            </button>
-                        </div>
-                    </object>
+                    <iframe src={url} className="w-full h-full" style={{ border: 'none' }} title="PDF Preview" />
                 </div>
             </div>
         </div>
@@ -351,10 +338,11 @@ const ImportProjectsModal: React.FC<{
 
 interface CombinedLogProps {
   onBack: () => void;
+  onBackDirect?: () => void;
   initialData?: any;
 }
 
-const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, initialData }) => {
+const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, onBackDirect, initialData }) => {
     const [headerData, setHeaderData] = useState<HeaderData>({
         proponent: '',
         projectName: '',
@@ -375,8 +363,21 @@ const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, initialData }) => {
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [showImportMenu, setShowImportMenu] = useState(false);
+    const importMenuRef = useRef<HTMLDivElement>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+    const AUTOSAVE_KEY = 'xtec_autosave_enabled';
+    const AUTOSAVE_INTERVAL_KEY = 'xtec_autosave_interval';
+    const [autosaveEnabled, setAutosaveEnabled] = useState(() => localStorage.getItem(AUTOSAVE_KEY) !== 'false');
+    const [autosaveIntervalMs, setAutosaveIntervalMs] = useState(() => parseInt(localStorage.getItem(AUTOSAVE_INTERVAL_KEY) || '30') * 1000);
+    const [showSaveAsMenu, setShowSaveAsMenu] = useState(false);
+    const saveAsMenuRef = useRef<HTMLDivElement>(null);
+    const quickSaveRef = useRef<() => Promise<void>>();
+    const isDirtyRef = useRef(isDirty);
+    isDirtyRef.current = isDirty;
+    const autosaveEnabledRef = useRef(autosaveEnabled);
+    autosaveEnabledRef.current = autosaveEnabled;
     const fileInputRef = useRef<HTMLInputElement>(null);
     const importFileInputRef = useRef<HTMLInputElement>(null);
     const isDownloadingRef = useRef(false);
@@ -810,26 +811,28 @@ const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, initialData }) => {
         return true;
     };
 
-    const handleSaveProject = async () => {
+    const handleQuickSave = async () => {
         const stateForRecentProjects = await prepareStateForRecentProjectStorage(headerData, photosData);
-        
         const formattedDate = formatDateForRecentProject(headerData.date);
         const dateSuffix = formattedDate ? ` - ${formattedDate}` : '';
         const projectName = `${headerData.projectName || 'Untitled Combine Logs'}${dateSuffix}`;
-
         const newTimestamp = await addRecentProject(stateForRecentProjects, {
             type: 'combinedLog',
             name: projectName,
             projectNumber: headerData.projectNumber,
         });
         setProjectTimestamp(newTimestamp);
-        
+        setIsDirty(false);
+        toast('Saved ✓');
+    };
+    quickSaveRef.current = handleQuickSave;
+
+    const handleSaveProject = async () => {
+        await handleQuickSave();
         const photosForExport = photosData.map(({ imageId, ...photo }) => photo);
         const stateForFileExport = { headerData, photosData: photosForExport };
-
         const sanitize = (name: string) => name.replace(/[^a-z0-9_]/gi, '-').toLowerCase();
         const filename = `${sanitize(headerData.projectNumber) || 'project'}_${sanitize(headerData.projectName) || 'combinedlog'}.clog`;
-
         // @ts-ignore
         if (window.electronAPI) {
             // @ts-ignore
@@ -844,7 +847,6 @@ const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, initialData }) => {
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         }
-        setIsDirty(false);
     };
 
     const addSafeLogo = async (docInstance: any, x: number, y: number, w: number, h: number) => {
@@ -884,6 +886,7 @@ const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, initialData }) => {
         });
 
         // 🟢 EXACT PARITY WITH PHOTOLOG PDF GENERATION LOGIC
+        perfMark('pdf-gen-start');
         const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'letter' });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -1159,6 +1162,8 @@ const CombinedLog: React.FC<CombinedLogProps> = ({ onBack, initialData }) => {
             doc.text(`Page ${i} of ${totalPages}`, pageWidth - borderMargin, footerTextY, { align: 'right' });
         }
         
+        perfMark('pdf-gen-end');
+        perfMeasure('PDF generation (CombinedLog)', 'pdf-gen-start', 'pdf-gen-end');
         const pdfBlob = doc.output('blob');
         const pdfUrl = URL.createObjectURL(pdfBlob);
         setPdfPreview({ url: pdfUrl, filename, blob: pdfBlob });
@@ -1266,6 +1271,10 @@ Description: ${photo.description || 'N/A'}
     useEffect(() => {
         // @ts-ignore
         const api = window.electronAPI;
+        if (api?.onQuickSaveShortcut) {
+            api.removeQuickSaveShortcutListener?.();
+            api.onQuickSaveShortcut(() => { quickSaveRef.current?.(); });
+        }
         if (api?.onSaveProjectShortcut) {
             api.removeSaveProjectShortcutListener?.();
             api.onSaveProjectShortcut(() => {
@@ -1279,10 +1288,51 @@ Description: ${photo.description || 'N/A'}
             });
         }
         return () => {
+            api?.removeQuickSaveShortcutListener?.();
             api?.removeSaveProjectShortcutListener?.();
             api?.removeExportPdfShortcutListener?.();
         };
     }, [headerData, photosData]);
+
+    useEffect(() => {
+        const name = headerData.projectName || '';
+        const num = headerData.projectNumber || '';
+        const prefix = [num, name].filter(Boolean).join(' – ');
+        document.title = prefix ? `${prefix} | X-TEC` : 'X-TEC Digital Reporting';
+        return () => { document.title = 'X-TEC Digital Reporting'; };
+    }, [headerData.projectName, headerData.projectNumber]);
+
+    // Autosave at configured interval when dirty
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (isDirtyRef.current && autosaveEnabledRef.current) {
+                quickSaveRef.current?.();
+            }
+        }, autosaveIntervalMs);
+        return () => clearInterval(interval);
+    }, [autosaveIntervalMs]);
+
+    useEffect(() => {
+        if (!showSaveAsMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (saveAsMenuRef.current && !saveAsMenuRef.current.contains(e.target as Node)) {
+                setShowSaveAsMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showSaveAsMenu]);
+
+    useEffect(() => {
+        if (!showImportMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) {
+                setShowImportMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showImportMenu]);
 
     const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -1353,60 +1403,93 @@ Description: ${photo.description || 'N/A'}
                 currentProjectTimestamp={projectTimestamp}
             />
 
-            <div className="max-w-7xl mx-auto p-4 md:p-8">
-                <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-                    <button onClick={handleBack} className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white text-gray-800 font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
+            <div className="sticky top-0 z-40 bg-gray-100 dark:bg-gray-900 py-2 border-b border-gray-200 dark:border-gray-700">
+                <div className="max-w-7xl mx-auto px-4 md:px-8 flex flex-wrap justify-between items-center gap-2">
+                    <button onClick={handleBack} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
                         <ArrowLeftIcon /> <span>Home</span>
                     </button>
-                    <div className="flex flex-wrap justify-end gap-2">
-                        <button onClick={handleOpenProject} className="bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                            <FolderOpenIcon /> <span>Open</span>
-                        </button>
-                         <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleFileSelected}
-                            style={{ display: 'none' }}
-                            accept=".clog"
-                        />
-                        
-                        <button 
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
-                        >
-                            <DocumentDuplicateIcon className="h-5 w-5" /> <span>Import Recent</span>
-                        </button>
-
-                        <input
-                            type="file"
-                            ref={importFileInputRef}
-                            onChange={handleImportFileSelected}
-                            style={{ display: 'none' }}
-                            accept=".plog,.dfr,.spdfr,.clog,.json"
-                            multiple
-                        />
-                        <button 
-                            onClick={handleImportFromFiles}
-                            className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
-                        >
-                            <FolderArrowDownIcon className="h-5 w-5" /> <span>Import Files</span>
-                        </button>
-
-                        <button onClick={handleSaveProject} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                            <SaveIcon /> <span>Save</span>
-                        </button>
-                         {/* @ts-ignore */}
-                        {!window.electronAPI && (
-                            <button onClick={handleDownloadPhotos} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                                <FolderArrowDownIcon /> <span>Photos</span>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Autosave</span>
+                            <button
+                                onClick={() => { const v = !autosaveEnabled; setAutosaveEnabled(v); localStorage.setItem(AUTOSAVE_KEY, String(v)); }}
+                                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${autosaveEnabled ? 'bg-[#007D8C]' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                title={autosaveEnabled ? 'Autosave on — click to disable' : 'Autosave off — click to enable'}
+                            >
+                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${autosaveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                             </button>
-                        )}
-                        <button onClick={handleSavePdf} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200">
-                            <DownloadIcon /> <span>PDF</span>
+                        </div>
+                        <button onClick={handleQuickSave} title="Save (Ctrl+S)" className="bg-[#007D8C] hover:bg-[#006b7a] text-white font-semibold py-2 px-3 rounded-lg inline-flex items-center transition duration-200">
+                            <SaveIcon />
                         </button>
+                        {/* Hidden file inputs */}
+                        <input type="file" ref={fileInputRef} onChange={handleFileSelected} style={{ display: 'none' }} accept=".clog" />
+                        <input type="file" ref={importFileInputRef} onChange={handleImportFileSelected} style={{ display: 'none' }} accept=".plog,.dfr,.spdfr,.clog,.json" multiple />
+
+                        {/* Import dropdown */}
+                        <div className="relative" ref={importMenuRef}>
+                            <button
+                                onClick={() => setShowImportMenu(v => !v)}
+                                className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
+                            >
+                                <FolderOpenIcon /> <span>Open / Import</span>
+                                <ChevronDownIcon className="h-4 w-4" />
+                            </button>
+                            {showImportMenu && (
+                                <div className="absolute left-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[200px]">
+                                    <button
+                                        onClick={() => { setShowImportMenu(false); handleOpenProject(); }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                    >
+                                        <FolderOpenIcon className="h-4 w-4 flex-shrink-0" /> Open Existing (.clog)
+                                    </button>
+                                    <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+                                    <button
+                                        onClick={() => { setShowImportMenu(false); setIsImportModalOpen(true); }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                    >
+                                        <DocumentDuplicateIcon className="h-4 w-4 flex-shrink-0" /> Import from Recent Projects
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowImportMenu(false); handleImportFromFiles(); }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                    >
+                                        <FolderArrowDownIcon className="h-4 w-4 flex-shrink-0" /> Import from Files
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Save As dropdown */}
+                        <div className="relative" ref={saveAsMenuRef}>
+                            <button
+                                onClick={() => setShowSaveAsMenu(v => !v)}
+                                className="border border-[#007D8C] text-[#007D8C] hover:bg-[#007D8C]/10 dark:hover:bg-[#007D8C]/10 font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition duration-200"
+                            >
+                                <span>Save As...</span>
+                                <ChevronDownIcon className="h-4 w-4" />
+                            </button>
+                            {showSaveAsMenu && (
+                                <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+                                    <button
+                                        onClick={() => { setShowSaveAsMenu(false); handleSaveProject(); }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                    >
+                                        <SaveIcon className="h-4 w-4 flex-shrink-0" /> Project File
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowSaveAsMenu(false); handleSavePdf(); }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                                    >
+                                        <DownloadIcon className="h-4 w-4 flex-shrink-0" /> PDF
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-                
+            </div>
+            <div className="max-w-7xl mx-auto p-4 md:p-8">
                 <div className="main-content">
                     <Header data={headerData} onDataChange={handleHeaderChange} errors={getHeaderErrors()} />
                     <div className="mt-8">
@@ -1552,7 +1635,7 @@ Description: ${photo.description || 'N/A'}
                                         // @ts-ignore
                                         window.electronAPI?.confirmClose();
                                     } else {
-                                        onBack();
+                                        (onBackDirect ?? onBack)();
                                     }
                                 }}
                                 className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition"

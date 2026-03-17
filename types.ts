@@ -60,6 +60,7 @@ export interface CommentReply {
     id: string;
     text: string;
     author: string;        // PRESERVED: Never overwrite on load
+    authorAvatar?: string; // Base64 data URL, embedded at creation time
     timestamp: Date;       // Serialized as ISO string in JSON
 }
 
@@ -75,6 +76,7 @@ export interface TextComment {
     text: string;          // Comment body
     suggestedText?: string; // Optional text suggestion
     author: string;        // PRESERVED: Never overwrite on load
+    authorAvatar?: string; // Base64 data URL, embedded at creation time
     timestamp: Date;       // Serialized as ISO string in JSON
     resolved: boolean;
     replies?: CommentReply[];
@@ -141,6 +143,8 @@ export interface PhotoData {
   imageId?: string;
   direction?: string;
   isMap?: boolean;
+  inlineComments?: TextComment[];
+  highlights?: TextHighlight[];
 }
 
 // --- SaskPower DFR Types ---

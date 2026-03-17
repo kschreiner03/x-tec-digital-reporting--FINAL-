@@ -17,34 +17,61 @@ const REPORT_ISSUE_URL = process.env.REPORT_ISSUE_URL || 'https://forms.office.c
 // --- Security: Allowed Extensions for File Operations ---
 const ALLOWED_EXTENSIONS = ['.dfr', '.spdfr', '.plog', '.clog', '.iogc', '.json'];
 
-// --- Single Instance Lock ---
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-      const filePath = commandLine.find(arg =>
-        ALLOWED_EXTENSIONS.some(ext => arg.endsWith(ext))
-      );
-      if (filePath) {
-        mainWindow.webContents.send('open-file-path', filePath);
+// --- Squirrel install/update event detection (Windows only, must be checked early) ---
+const isSquirrelEvent = process.platform === 'win32' &&
+  process.argv.slice(1).some(a => a.startsWith('--squirrel-'));
+
+// --- Single Instance Lock (skip during Squirrel install/update/uninstall events) ---
+if (!isSquirrelEvent) {
+  const gotTheLock = app.requestSingleInstanceLock();
+  if (!gotTheLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+        const filePath = commandLine.find(arg =>
+          ALLOWED_EXTENSIONS.some(ext => arg.endsWith(ext))
+        );
+        if (filePath) {
+          mainWindow.webContents.send('open-file-path', filePath);
+        }
       }
-    }
-  });
+    });
+  }
 }
 
 // --- Shortcut creation (Windows only) ---
 const updateExe = path.resolve(path.dirname(process.execPath), '..', 'Update.exe');
 const exeName = path.basename(process.execPath);
 
+// Handle Squirrel lifecycle events (install, update, uninstall, obsolete)
+// process.exit() is used instead of app.quit() here because app.quit() called
+// before app.isReady() is unreliable in Electron 40+ and can leave the
+// installer loading GIF open indefinitely.
+if (isSquirrelEvent) {
+  const squirrelArg = process.argv.find(a => a.startsWith('--squirrel-'));
+
+  if (squirrelArg === '--squirrel-install' || squirrelArg === '--squirrel-updated') {
+    spawn(updateExe, ['--createShortcut', exeName], { detached: true, stdio: 'ignore' }).unref();
+    const appExe = path.resolve(path.dirname(process.execPath), exeName);
+    // Pass --squirrel-firstrun so the re-launched app can close the installer window
+    spawn(appExe, ['--squirrel-firstrun'], { detached: true, stdio: 'ignore' }).unref();
+    process.exit(0);
+  } else if (squirrelArg === '--squirrel-uninstall') {
+    spawn(updateExe, ['--removeShortcut', exeName], { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => process.exit(0), 500);
+  } else {
+    process.exit(0);
+  }
+}
+
 app.once('ready', () => {
-  if (process.platform !== 'win32') return;
+  if (isSquirrelEvent || process.platform !== 'win32') return;
 
   try {
-    const desktopShortcut = path.join(app.getPath('desktop'), 'X-TEC Digital Reporting.lnk');
+    const desktopShortcut = path.join(app.getPath('desktop'), 'X-TES Digital Reporting.lnk');
     if (fs.existsSync(updateExe) && !fs.existsSync(desktopShortcut)) {
       console.log('Creating desktop/start menu shortcuts...');
       spawn(updateExe, ['--createShortcut', exeName], { detached: true });
@@ -129,13 +156,22 @@ const menuTemplate = [
     label: 'File',
     submenu: [
         {
-            label: 'Save Project',
+            label: 'Save',
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.webContents.send('quick-save-shortcut');
+                }
+            },
+            accelerator: 'CmdOrCtrl+S'
+        },
+        {
+            label: 'Save As...',
             click: () => {
                 if (mainWindow) {
                     mainWindow.webContents.send('save-project-shortcut');
                 }
             },
-            accelerator: 'CmdOrCtrl+S'
+            accelerator: 'CmdOrCtrl+Shift+S'
         },
         {
             label: 'Export PDF',
@@ -219,15 +255,24 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false, // Cannot be fully sandboxed due to node:fs usage in main process handlers interacting with dialogs
-      plugins: true, // Enable PDF viewer plugin
-      spellcheck: true, // Enable spell checking
+      sandbox: false,
+      plugins: true,
+      spellcheck: true,
     },
   });
 
-  mainWindow.maximize();
-  mainWindow.show();
-  // mainWindow.webContents.openDevTools();
+  mainWindow.once('ready-to-show', () => {
+    if (process.argv.includes('--squirrel-firstrun') && process.platform === 'win32') {
+      // Kill the Squirrel installer process so its loading GIF window closes,
+      // then show the app a beat later so there's no overlap.
+      spawn('taskkill', ['/F', '/IM', 'x-tec-digital-reporting-webSetup.exe'],
+        { detached: true, stdio: 'ignore' }).unref();
+      setTimeout(() => { mainWindow.maximize(); mainWindow.show(); }, 300);
+    } else {
+      mainWindow.maximize();
+      mainWindow.show();
+    }
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -323,6 +368,9 @@ const allowedPdfs = [
 
 // --- Handle file operations ---
 app.whenReady().then(() => {
+  // Squirrel events are handled entirely in showInstallScreen() — skip normal startup
+  if (isSquirrelEvent) return;
+
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
 
@@ -399,8 +447,9 @@ app.whenReady().then(() => {
     
     // Security: Normalize path to prevent traversal
     const pdfPath = path.normalize(path.join(assetsDir, filename));
-    
-    if (!pdfPath.startsWith(assetsDir)) {
+
+    // Use path.sep suffix to prevent prefix-match bypass (e.g. /assets_backup starting with /assets)
+    if (!pdfPath.startsWith(assetsDir + path.sep) && pdfPath !== assetsDir) {
         console.error('Path traversal attempt detected');
         return;
     }
@@ -414,20 +463,34 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('get-asset-path', (event, filename) => {
-    // Security: Block path traversal but allow subfolder paths (e.g. wallpaper/image.jpg)
-    if (filename.includes('..')) {
+    // Security: validate input type
+    if (typeof filename !== 'string' || !filename) return '';
+
+    // Normalize to forward slashes, then resolve to catch encoded traversal tricks
+    const safeName = filename.replace(/\\/g, '/');
+    const normalized = path.normalize(safeName).replace(/\\/g, '/');
+
+    // Block any path traversal after normalization
+    if (normalized.startsWith('..') || normalized.includes('/../') || path.isAbsolute(normalized)) {
+        console.warn('[security] get-asset-path: blocked traversal attempt:', filename);
         return '';
     }
-    // Normalize to forward slashes for consistency
-    const safeName = filename.replace(/\\/g, '/');
+
+    // Whitelist allowed asset extensions
+    const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.JPG', '.JPEG', '.PNG']);
+    const ext = path.extname(normalized);
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+        console.warn('[security] get-asset-path: blocked disallowed extension:', ext);
+        return '';
+    }
+
     // URL-encode each path segment (handles spaces, commas, etc.) but preserve /
-    const encodedName = safeName.split('/').map(s => encodeURIComponent(s)).join('/');
+    const encodedName = normalized.split('/').map(s => encodeURIComponent(s)).join('/');
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}/assets/${encodedName}`;
     } else {
-      const assetPath = path.join(process.resourcesPath, 'assets', ...safeName.split('/'));
-      // Use encodeURI which preserves :, /, etc. but encodes spaces and special chars
+      const assetPath = path.join(process.resourcesPath, 'assets', ...normalized.split('/'));
       return encodeURI(`file://${assetPath.replace(/\\/g, '/')}`);
     }
   });
@@ -481,8 +544,15 @@ app.whenReady().then(() => {
     });
 
     if (filePaths && filePaths.length > 0) {
+      const chosenPath = filePaths[0];
+      // Defense-in-depth: validate extension even though the dialog already filters
+      const ext = path.extname(chosenPath).toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        console.error('Blocked unexpected file type from dialog:', chosenPath);
+        return null;
+      }
       try {
-        const data = fs.readFileSync(filePaths[0], 'utf-8');
+        const data = fs.readFileSync(chosenPath, 'utf-8');
         return data;
       } catch (err) {
         console.error('Failed to read project file:', err);
@@ -493,10 +563,14 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('read-file', async (event, filePath) => {
-    // Security: Strict validation of file extensions.
-    // This prevents a malicious renderer from requesting critical system files.
+    // Security: validate type, require absolute path, and check extension allowlist.
+    // Requiring an absolute path prevents relative traversal (e.g. ../../sensitive.plog).
     if (!filePath || typeof filePath !== 'string') return { success: false, error: 'Invalid path' };
-    
+    if (!path.isAbsolute(filePath)) {
+        console.error(`Blocked relative path in read-file: ${filePath}`);
+        return { success: false, error: 'Absolute path required.' };
+    }
+
     const ext = path.extname(filePath).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
         console.error(`Blocked attempt to read unauthorized file type: ${filePath}`);

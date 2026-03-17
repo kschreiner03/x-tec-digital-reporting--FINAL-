@@ -22,7 +22,8 @@ import {
   Zap,
   ZoomIn,
   ZoomOut,
-  GripVertical
+  GripVertical,
+  ChevronDown
 } from "lucide-react";
 
 /* ============================================================
@@ -135,4 +136,8 @@ export const ZoomOutIcon = (p: any) => (
 
 export const GripVerticalIcon = (p: any) => (
   <GripVertical strokeWidth={1.25} {...p} />
+);
+
+export const ChevronDownIcon = (p: any) => (
+  <ChevronDown strokeWidth={2} {...p} />
 );

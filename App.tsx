@@ -1,14 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import LandingPage, { RecentProject } from './components/LandingPage';
-import PhotoLog from './components/PhotoLog';
-import DfrStandard from './components/DfrStandard';
-import DfrSaskpower from './components/DfrSaskpower';
+import SettingsModal from './components/SettingsModal';
 // import IogcLeaseAudit from './components/IogcLeaseAudit'; // Hidden for now
 import { retrieveProject } from './components/db';
-import CombinedLog from './components/CombinedLog';
-import SettingsModal from './components/SettingsModal';
+
+const PhotoLog   = lazy(() => import('./components/PhotoLog'));
+const DfrStandard  = lazy(() => import('./components/DfrStandard'));
+const DfrSaskpower = lazy(() => import('./components/DfrSaskpower'));
+const CombinedLog  = lazy(() => import('./components/CombinedLog'));
 import UpdateModal from './components/UpdateModal';
+import { shouldShowWhatsNew } from './components/WhatsNewModal';
+import { ToastContainer, toast } from './components/Toast';
+import { getAssetUrl } from './components/SafeImage';
+import { perfMark, PERF_ENABLED } from './components/perf';
+
+perfMark('app-module-loaded');
+
+// Pre-warm the SafeImage URL cache at startup so Settings wallpaper thumbnails load instantly.
+const WALLPAPER_FILENAMES = [
+    'landscape.JPG', 'bison1.jpg',
+    'wallpaper/116911439_10223823748248481_4788712539515562122_o - Copy.jpg',
+    'wallpaper/bison rock - Copy.jpg', 'wallpaper/Breeding Bird Surveys_CL.jpg',
+    'wallpaper/common nighthawk - Copy.JPG', 'wallpaper/DJI_0041.JPG',
+    'wallpaper/IMG_0009_CL.jpg', 'wallpaper/IMG_0283.JPG', 'wallpaper/Owl.jpg',
+];
+WALLPAPER_FILENAMES.forEach(f => getAssetUrl(f));
 
 export type AppType = 'photoLog' | 'dfrSaskpower' | 'dfrStandard' | 'combinedLog' | 'iogcLeaseAudit';
 
@@ -18,6 +35,11 @@ const App: React.FC = () => {
     const [isUpdateDownloaded, setIsUpdateDownloaded] = useState(false);
     const [showUpdateModal, setShowUpdateModal] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    // Evaluated once per session — not re-checked on every LandingPage mount
+    const [showWhatsNew, setShowWhatsNew] = useState(() => shouldShowWhatsNew());
+    // View-transition animation state
+    const [isExiting, setIsExiting] = useState(false);
+    const [landingReturning, setLandingReturning] = useState(false);
 
     const loadProjectFromFileContent = (content: string, path: string) => {
         try {
@@ -48,6 +70,7 @@ const App: React.FC = () => {
     };
 
     useEffect(() => {
+        perfMark('app-render-complete');
         // @ts-ignore
         if (window.electronAPI && window.electronAPI.onOpenFile) {
             // @ts-ignore
@@ -123,6 +146,7 @@ const App: React.FC = () => {
         }
     }, [selectedApp]);
 
+
     const handleSelectApp = (app: AppType) => {
         setProjectToOpen(null);
         setSelectedApp(app);
@@ -139,17 +163,34 @@ const App: React.FC = () => {
             setSelectedApp(project.type);
         } catch (e) {
             console.error("Failed to load project data:", e);
-            alert("Could not open the project. The file may be corrupt or missing from the database.");
+            toast("Could not open the project. The file may be corrupt or missing from the database.", "error");
         }
     };
     
     const handleBackToHome = () => {
+        setIsExiting(true);
+        // Actual navigation happens in onAnimationEnd — no hardcoded timer needed
+    };
+
+    // Skip exit animation — used when navigating from a confirmation dialog
+    const handleBackDirect = () => {
         setSelectedApp(null);
         setProjectToOpen(null);
-    }
+        setLandingReturning(true);
+    };
+
+    const handleExitAnimationEnd = (e: React.AnimationEvent<HTMLDivElement>) => {
+        // Guard against child animation events bubbling up
+        if (e.animationName !== 'xtec-report-exit-kf') return;
+        setSelectedApp(null);
+        setProjectToOpen(null);
+        setIsExiting(false);
+        setLandingReturning(true);
+    };
 
     return (
         <>
+            <ToastContainer />
             {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
             {showUpdateModal && (
                 <UpdateModal
@@ -158,24 +199,36 @@ const App: React.FC = () => {
                 />
             )}
             {!selectedApp ? (
-                <LandingPage onSelectApp={handleSelectApp} onOpenProject={handleOpenProject} />
+                <div
+                    className={landingReturning ? 'xtec-landing-return' : ''}
+                    onAnimationEnd={landingReturning ? () => setLandingReturning(false) : undefined}
+                >
+                    <LandingPage onSelectApp={handleSelectApp} onOpenProject={handleOpenProject} showWhatsNew={showWhatsNew} onCloseWhatsNew={() => setShowWhatsNew(false)} />
+                </div>
             ) : (
-                (() => {
-                    switch (selectedApp) {
-                        case 'photoLog':
-                            return <PhotoLog onBack={handleBackToHome} initialData={projectToOpen} />;
-                        case 'dfrSaskpower':
-                            return <DfrSaskpower onBack={handleBackToHome} initialData={projectToOpen} />;
-                        case 'dfrStandard':
-                            return <DfrStandard onBack={handleBackToHome} initialData={projectToOpen} />;
-                        case 'combinedLog':
-                            return <CombinedLog onBack={handleBackToHome} initialData={projectToOpen} />;
-                        // case 'iogcLeaseAudit':
-                        //     return <IogcLeaseAudit onBack={handleBackToHome} initialData={projectToOpen} />;
-                        default:
-                            return <LandingPage onSelectApp={handleSelectApp} onOpenProject={handleOpenProject} />;
-                    }
-                })()
+                <div
+                    className={isExiting ? 'xtec-report-exit' : 'xtec-report-enter'}
+                    onAnimationEnd={isExiting ? handleExitAnimationEnd : undefined}
+                >
+                    <Suspense fallback={null}>
+                        {(() => {
+                            switch (selectedApp) {
+                                case 'photoLog':
+                                    return <PhotoLog onBack={handleBackToHome} onBackDirect={handleBackDirect} initialData={projectToOpen} />;
+                                case 'dfrSaskpower':
+                                    return <DfrSaskpower onBack={handleBackToHome} onBackDirect={handleBackDirect} initialData={projectToOpen} />;
+                                case 'dfrStandard':
+                                    return <DfrStandard onBack={handleBackToHome} onBackDirect={handleBackDirect} initialData={projectToOpen} />;
+                                case 'combinedLog':
+                                    return <CombinedLog onBack={handleBackToHome} onBackDirect={handleBackDirect} initialData={projectToOpen} />;
+                                // case 'iogcLeaseAudit':
+                                //     return <IogcLeaseAudit onBack={handleBackToHome} initialData={projectToOpen} />;
+                                default:
+                                    return <LandingPage onSelectApp={handleSelectApp} onOpenProject={handleOpenProject} />;
+                            }
+                        })()}
+                    </Suspense>
+                </div>
             )}
         </>
     );
