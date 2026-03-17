@@ -26,11 +26,15 @@ const PhotoCredit: React.FC<{ fileName: string | null }> = ({ fileName }) => {
     );
 };
 
+export type ProjectStatus = 'draft' | 'review' | 'final' | 'submitted';
+
 export interface RecentProject {
     type: AppType;
     name: string;
     projectNumber: string;
     timestamp: number; // Used as project ID
+    folder?: string;
+    status?: ProjectStatus;
 }
 
 interface LandingPageProps {

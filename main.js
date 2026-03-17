@@ -223,6 +223,20 @@ const menuTemplate = [
     ]
   },
   {
+    label: 'View',
+    submenu: [
+      {
+        label: 'All Projects',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.webContents.send('open-projects-view');
+          }
+        },
+        accelerator: 'CmdOrCtrl+Shift+P'
+      }
+    ]
+  },
+  {
     label: 'Help',
     submenu: [
       {

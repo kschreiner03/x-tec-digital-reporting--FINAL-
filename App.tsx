@@ -2,6 +2,7 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import LandingPage, { RecentProject } from './components/LandingPage';
 import SettingsModal from './components/SettingsModal';
+import ProjectsView from './components/ProjectsView';
 import { retrieveProject } from './components/db';
 
 const PhotoLog   = lazy(() => import('./components/PhotoLog'));
@@ -34,6 +35,7 @@ const App: React.FC = () => {
     const [isUpdateDownloaded, setIsUpdateDownloaded] = useState(false);
     const [showUpdateModal, setShowUpdateModal] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [showProjectsView, setShowProjectsView] = useState(false);
     // Evaluated once per session — not re-checked on every LandingPage mount
     const [showWhatsNew, setShowWhatsNew] = useState(() => shouldShowWhatsNew());
     // View-transition animation state
@@ -107,6 +109,14 @@ const App: React.FC = () => {
             });
         }
 
+        // @ts-ignore
+        if (window.electronAPI?.onOpenProjectsView) {
+            // @ts-ignore
+            window.electronAPI.onOpenProjectsView(() => {
+                setShowProjectsView(true);
+            });
+        }
+
         return () => {
              // @ts-ignore
             if (window.electronAPI?.removeUpdateAvailableListener) {
@@ -123,6 +133,8 @@ const App: React.FC = () => {
                 // @ts-ignore
                 window.electronAPI.removeOpenSettingsListener();
             }
+            // @ts-ignore
+            window.electronAPI?.removeOpenProjectsViewListener?.();
         }
     }, []);
 
@@ -190,6 +202,7 @@ const App: React.FC = () => {
         <>
             <ToastContainer />
             {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+            {showProjectsView && <ProjectsView onClose={() => setShowProjectsView(false)} onOpenProject={(p) => { setShowProjectsView(false); handleOpenProject(p); }} />}
             {showUpdateModal && (
                 <UpdateModal
                     isDownloaded={isUpdateDownloaded}

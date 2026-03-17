@@ -87,6 +87,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("open-settings");
   },
 
+  onOpenProjectsView: (callback) => {
+    ipcRenderer.on("open-projects-view", () => callback());
+  },
+
+  removeOpenProjectsViewListener: () => {
+    ipcRenderer.removeAllListeners("open-projects-view");
+  },
+
   removeUpdateAvailableListener: () => {
     ipcRenderer.removeAllListeners("update-available");
   },
