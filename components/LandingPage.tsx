@@ -373,7 +373,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectApp, onOpenProject, s
                         <div style={{ width: 80, height: 2, background: 'linear-gradient(90deg, #007D8C, rgba(0,125,140,0.25))', margin: '10px auto 0', borderRadius: 1 }} />
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 flex-shrink-0 items-stretch">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 flex-shrink-0 items-stretch">
                         <div className="h-full">
                             <AppSelectionCard
                                 title="Photo Log"
@@ -411,8 +411,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectApp, onOpenProject, s
                                 isDark={isDark}
                             />
                         </div>
-                        {/* IOGC Lease Audit hidden until ready for release */}
-                        {false && <div className="h-full">
+                        <div className="h-full">
                             <AppSelectionCard
                                 title="IOGC Lease Audit"
                                 description="Surface lease audit reports for IOGC."
@@ -420,7 +419,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectApp, onOpenProject, s
                                 onClick={() => onSelectApp('iogcLeaseAudit')}
                                 isDark={isDark}
                             />
-                        </div>}
+                        </div>
                     </div>
 
                     {/* Recent Projects - collapsible section */}
